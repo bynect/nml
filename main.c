@@ -10,19 +10,25 @@ int main(int argc, char **argv)
 
     //expr_t *expr = expr_lit_new(42);
 
-    // ((\x -> \y -> x) 69) 42
+    // (((\x -> \y -> \z -> x) 69) 42) 104
     expr_t *expr = expr_apply_new(
         expr_apply_new(
-            expr_lambda_new(
-                "x",
+            expr_apply_new(
                 expr_lambda_new(
-                    "y",
-                    expr_var_new("x")
-                )
+                    "x",
+                    expr_lambda_new(
+                        "y",
+                        expr_lambda_new(
+                            "z",
+                            expr_var_new("x")
+                        )
+                    )
+                ),
+                expr_lit_new(69)
             ),
-            expr_lit_new(69)
+            expr_lit_new(42)
         ),
-        expr_lit_new(42)
+        expr_lit_new(104)
     );
 
     expr_println(expr);

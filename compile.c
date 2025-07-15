@@ -1,28 +1,10 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "compile.h"
 #include "ast.h"
-
-static env_t *env_append(const char *name, int offset, env_t *tail)
-{
-    env_t *head = malloc(sizeof(env_t));
-    head->name = name;
-    head->offset = offset;
-    head->next = tail;
-    return head;
-}
-
-static env_t *env_clear(env_t *head, env_t *until)
-{
-    while (head != until) {
-        env_t *next = head->next;
-        free(head);
-        head = next;
-    }
-    return head;
-}
+#include "env.h"
 
 void compile_init(compile_t *comp, FILE *file)
 {
@@ -33,10 +15,84 @@ void compile_init(compile_t *comp, FILE *file)
 
 static bool compile_emit_expr(compile_t *comp, expr_t *expr);
 
+static bool compile_emit_var(compile_t *comp, expr_var_t *var)
+{
+    long offset;
+    if (env_find(comp->env, var->name, &offset) < 0) {
+        printf("Unbound reference to '%s'\n", var->name);
+        return false;
+    }
+
+    if (offset == 0)
+        fprintf(comp->file, "\tmovq %%r14, %%r12\n");
+    else
+        fprintf(comp->file, "\tmovq %ld(%%r13), %%r12\n", offset);
+
+    return true;
+}
+
+static bool compile_freevars(compile_t *comp, expr_t *expr, env_t **env)
+{
+    switch (expr->tag) {
+        case EXPR_LIT:
+            break;
+
+        case EXPR_VAR: {
+            expr_var_t *var = (expr_var_t *)expr;
+            *env = env_update(*env, var->name, 0);
+            break;
+        }
+
+        case EXPR_LAMBDA: {
+            expr_lambda_t *lam = (expr_lambda_t *)expr;
+            if (!compile_freevars(comp, lam->body, env))
+                return false;
+
+            *env = env_remove(*env, lam->bound);
+            break;
+        }
+
+        case EXPR_APPLY: {
+            expr_apply_t *app = (expr_apply_t *)expr;
+            return compile_freevars(comp, app->fun, env)
+                && compile_freevars(comp, app->arg, env);
+        }
+
+        case EXPR_LET: {
+            expr_let_t *let = (expr_let_t *)expr;
+            abort();
+        }
+    }
+    return true;
+}
+
 static bool compile_emit_lambda(compile_t *comp, expr_lambda_t *lam)
 {
     if (lam->id != NULL) {
-        fprintf(comp->file, "\tleaq %s(%%rip), %%r12\n", lam->id);
+        size_t n_freevars = env_length(lam->freevars);
+
+        fprintf(comp->file,
+                "\tmovq $%ld, %%rdi\n"
+                "\tcall malloc\n"
+                "\tmovq %%rax, %%r15\n"
+                "\tleaq %s(%%rip), %%rax\n"
+                "\tmovq %%rax, (%%r15)\n",
+                (n_freevars + 1) * 8,
+                lam->id);
+
+        for (env_t *env = lam->freevars; env; env = env->next) {
+            expr_var_t var = { 0 };
+            var.name = env->name;
+
+            if (!compile_emit_var(comp, &var))
+                return false;
+
+            fprintf(comp->file,
+                    "\tmovq %%r12, %ld(%%r15)\n",
+                    env->value);
+        }
+
+        fputs("\tmovq %r15, %r12\n\n", comp->file);
         return true;
     }
 
@@ -44,11 +100,29 @@ static bool compile_emit_lambda(compile_t *comp, expr_lambda_t *lam)
     snprintf(id, 16, "lambda_%d", comp->lam_id++);
     lam->id = id;
 
+    env_t *freevars = NULL;
+    if (!compile_freevars(comp, (expr_t *)lam, &freevars)) {
+        printf("Failed to get freevars\n");
+        return false;
+    }
+
+    long offset = 8;
+    for (env_t *fv = freevars; fv; fv = fv->next) {
+        fv->value = offset;
+        offset += 8;
+    }
+
+    env_t *env = comp->env;
+    comp->env = env_append(freevars, lam->bound, 0);
+
     fprintf(comp->file, "%s:\n", id);
     if (!compile_emit_expr(comp, lam->body))
         return false;
 
-    fprintf(comp->file, "\tret\n\n");
+    lam->freevars = env_clear(comp->env, freevars);
+    comp->env = env;
+
+    fputs("\tret\n\n", comp->file);
     return true;
 }
 
@@ -58,42 +132,21 @@ static bool compile_emit_lit(compile_t *comp, expr_lit_t *lit)
     return true;
 }
 
-static bool compile_find_bound(compile_t *comp, const char *name, int *offset)
-{
-    for (env_t *env = comp->env; env; env = env->next) {
-        if (!strcmp(name, env->name)) {
-            *offset = env->offset;
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool compile_emit_var(compile_t *comp, expr_var_t *var)
-{
-    int offset;
-    if (!compile_find_bound(comp, var->name, &offset)) {
-        printf("Unbound reference to '%s'\n", var->name);
-        return false;
-    }
-
-    fprintf(comp->file, "\tmovq %d(%%rsp), %%r12\n", offset);
-    return true;
-}
-
 static bool compile_emit_apply(compile_t *comp, expr_apply_t *app)
 {
-    if (!compile_emit_expr(comp, app->arg))
-        return false;
-
-    fputs("\tpushq %r12\n", comp->file);
-
     if (!compile_emit_expr(comp, app->fun))
         return false;
 
-    fputs("\tcall *%r12\n"
-          "\taddq $8, %rsp\n",
+    fputs("\tpushq %r12\n", comp->file);
+    if (!compile_emit_expr(comp, app->arg))
+        return false;
+
+    fputs("\tmovq %r12, %r14\n"
+          "\tpopq %r13\n"
+          "\tcall *(%r13)\n"
+          "\n",
           comp->file);
+
     return true;
 }
 
@@ -135,7 +188,8 @@ static bool compile_lambdas(compile_t *comp, expr_t *expr)
             expr_lambda_t *lam = (expr_lambda_t *)expr;
             env_t *env = comp->env;
 
-            comp->env = env_append(lam->bound, 8, env);
+            comp->env = env_append(env, lam->bound, 0);
+
             if (!compile_lambdas(comp, lam->body))
                 return false;
 
@@ -164,17 +218,20 @@ static bool compile_lambdas(compile_t *comp, expr_t *expr)
 
 bool compile_expr(compile_t *comp, expr_t *expr)
 {
+    fputs(".extern printf\n"
+          ".extern malloc\n"
+          "\n",
+          comp->file);
+
     if (!compile_lambdas(comp, expr))
         return false;
 
     // r12 -> last value
     // r13 -> current closure
-    // r14 -> temporary
+    // r14 -> last argument
     // r15 -> temporary
 
-    fputs(".extern printf\n"
-          ".extern malloc\n"
-          ".globl main\n"
+    fputs(".globl main\n"
           "main:\n"
           "\tpushq %rbp\n"
           "\tmovq %rsp, %rbp\n"
@@ -183,7 +240,8 @@ bool compile_expr(compile_t *comp, expr_t *expr)
           "\tpushq %r14\n"
           "\tpushq %r15\n"
           "\txorq %r12, %r12\n"
-          "\txorq %r13, %r13\n",
+          "\txorq %r13, %r13\n"
+          "\n",
           comp->file);
 
     if (!compile_emit_expr(comp, expr))
@@ -210,4 +268,5 @@ bool compile_expr(compile_t *comp, expr_t *expr)
 
 void compile_free(compile_t *comp)
 {
+    env_clear(comp->env, NULL);
 }

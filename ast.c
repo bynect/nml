@@ -3,6 +3,7 @@
 #include <stdbool.h>
 
 #include "ast.h"
+#include "env.h"
 
 type_t *type_var_new(const char *name)
 {
@@ -95,6 +96,7 @@ expr_t *expr_lambda_new(const char *bound, expr_t *body)
     expr->bound = bound;
     expr->body = body;
     expr->id = NULL;
+    expr->freevars = NULL;
     return (expr_t *)expr;
 }
 
@@ -192,6 +194,7 @@ void expr_free(expr_t *expr)
             expr_lambda_t *lam = (expr_lambda_t *)expr;
             expr_free(lam->body);
             free(lam->id);
+            env_clear(lam->freevars, NULL);
             break;
         }
 

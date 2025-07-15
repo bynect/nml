@@ -6,12 +6,7 @@
 #include <stdio.h>
 
 #include "ast.h"
-
-typedef struct env {
-    const char *name;
-    int offset;
-    struct env *next;
-} env_t;
+#include "env.h"
 
 typedef struct {
     FILE *file;
