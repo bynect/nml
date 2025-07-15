@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "ast.h"
 #include "env.h"
@@ -143,7 +144,15 @@ void expr_print(expr_t *expr)
 
         case EXPR_LAMBDA: {
             expr_lambda_t *lam = (expr_lambda_t *)expr;
-            printf("%s -> ", lam->bound);
+            fputs(lam->bound, stdout);
+
+            if (expr->type && expr->type->tag == TYPE_CON
+                && !strcmp(((type_con_t *)expr->type)->name, "->")) {
+                fputs(" : ", stdout);
+                type_print(((type_con_t *)expr->type)->args[0]);
+            }
+
+            fputs(" -> ", stdout);
             expr_print(lam->body);
             break;
         }

@@ -167,6 +167,36 @@ bool infer_expr(infer_t *infer, expr_t *expr)
     return false;
 }
 
+bool infer_resolve(infer_t *infer, expr_t *expr)
+{
+    type_t *res;
+    if (!infer_type_find(expr->type, &res))
+        return false;
+
+    expr->type = res;
+    switch (expr->tag) {
+        case EXPR_LIT:
+        case EXPR_VAR:
+            return true;
+
+        case EXPR_LAMBDA: {
+            expr_lambda_t *lam = (expr_lambda_t *)expr;
+            return infer_resolve(infer, lam->body);
+        }
+
+        case EXPR_APPLY: {
+            expr_apply_t *app = (expr_apply_t *)expr;
+            return infer_resolve(infer, app->fun)
+                && infer_resolve(infer, app->arg);
+        }
+
+        case EXPR_LET:
+            break;
+    }
+
+    return false;
+}
+
 void infer_free(infer_t *infer)
 {
     // TODO

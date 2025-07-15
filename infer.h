@@ -16,6 +16,8 @@ void infer_init(infer_t *infer, env_t *env);
 
 bool infer_expr(infer_t *infer, expr_t *expr);
 
+bool infer_resolve(infer_t *infer, expr_t *expr);
+
 void infer_free(infer_t *infer);
 
 #endif

@@ -35,6 +35,7 @@ int main(int argc, char **argv)
     //    expr_lit_new(104)
     //);
 
+    printf("Expr: ");
     expr_println(expr);
 
     infer_t infer;
@@ -46,8 +47,12 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    FILE *out = fopen("out.S", "wb");
+    infer_resolve(&infer, expr);
 
+    printf("Typed: ");
+    expr_println(expr);
+
+    FILE *out = fopen("out.S", "wb");
     compile_t comp;
     compile_init(&comp, out);
 
