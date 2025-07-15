@@ -44,7 +44,9 @@ void type_print(type_t *type)
                     if (paren) putc('(', stdout);
                     type_print(con->args[i]);
                     if (paren) putc(')', stdout);
-                    putc(' ', stdout);
+
+                    if (i != con->n_args - 1)
+                        putc(' ', stdout);
                 }
             }
             break;
@@ -68,6 +70,14 @@ void type_free(type_t *type)
     }
 
     free(type);
+}
+
+expr_t *expr_lit_new(int64_t value)
+{
+    expr_lit_t *expr = malloc(sizeof(expr_lit_t));
+    expr->base.tag = EXPR_LIT;
+    expr->value = value;
+    return (expr_t *)expr;
 }
 
 expr_t *expr_var_new(const char *name)
@@ -106,9 +116,24 @@ expr_t *expr_let_new(const char *bound, expr_t *value, expr_t *body)
     return (expr_t *)expr;
 }
 
+expr_t *expr_annotate(expr_t *expr, type_t *type)
+{
+    if (expr->type != NULL)
+        type_free(expr->type);
+
+    expr->type = type;
+    return expr;
+}
+
 void expr_print(expr_t *expr)
 {
     switch (expr->tag) {
+        case EXPR_LIT: {
+            expr_lit_t *lit = (expr_lit_t *)expr;
+            printf("%ld", lit->value);
+            break;
+        }
+
         case EXPR_VAR: {
             expr_var_t *var = (expr_var_t *)expr;
             fputs(var->name, stdout);
@@ -124,17 +149,26 @@ void expr_print(expr_t *expr)
 
         case EXPR_APPLY: {
             expr_apply_t *app = (expr_apply_t *)expr;
-
             bool fun_paren = app->fun->tag != EXPR_VAR;
+            bool arg_paren = app->arg->tag != EXPR_VAR;
+
             if (fun_paren) putc('(', stdout);
             expr_print(app->fun);
             if (fun_paren) putc(')', stdout);
             putc(' ', stdout);
 
-            bool arg_paren = app->arg->tag != EXPR_VAR;
             if (arg_paren) putc('(', stdout);
             expr_print(app->arg);
             if (arg_paren) putc(')', stdout);
+            break;
+        }
+
+        case EXPR_LET: {
+            expr_let_t *let = (expr_let_t *)expr;
+            printf("let %s = ", let->bound);
+            expr_print(let->value);
+            printf(" in ");
+            expr_print(let->body);
             break;
         }
     }
@@ -148,6 +182,30 @@ void expr_println(expr_t *expr)
 
 void expr_free(expr_t *expr)
 {
+    switch (expr->tag) {
+        case EXPR_LIT:
+        case EXPR_VAR:
+            break;
+
+        case EXPR_LAMBDA: {
+            expr_lambda_t *lam = (expr_lambda_t *)expr;
+            expr_free(lam->body);
+            break;
+        }
+
+        case EXPR_APPLY: {
+            expr_apply_t *app = (expr_apply_t *)expr;
+            expr_free(app->fun);
+            expr_free(app->arg);
+            break;
+        }
+
+        case EXPR_LET: {
+            expr_let_t *let = (expr_let_t *)expr;
+            expr_free(let->value);
+            expr_free(let->body);
+            break;
+        }
+    }
     free(expr);
 }
-
