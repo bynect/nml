@@ -1,11 +1,12 @@
-#include "infer.h"
-#include "ast.h"
-#include "env.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "infer.h"
+#include "env.h"
+#include "type.h"
 
 void infer_init(infer_t *infer, env_t *env)
 {
@@ -40,6 +41,7 @@ static bool infer_type_resolve(type_t *type, type_t **resolve)
     if (!infer_type_find(type, &res))
         return false;
 
+    *resolve = res;
     if (res->tag == TYPE_CON) {
         type_con_t *con = (type_con_t *)res;
 
@@ -50,8 +52,6 @@ static bool infer_type_resolve(type_t *type, type_t **resolve)
             con->args[i] = res;
         }
     }
-
-    *resolve = res;
     return true;
 }
 
@@ -138,6 +138,21 @@ static bool infer_type_unify(type_t *t1, type_t *t2)
     return false;
 }
 
+static bool infer_instantiate(infer_t *infer, type_scheme_t *scheme, type_t **type)
+{
+    type_id_t *new = NULL;
+
+    if (scheme->n_vars > 0) {
+        new = calloc(scheme->n_vars, sizeof(type_id_t));
+        for (size_t i = 0; i < scheme->n_vars; i++)
+            new[i] = infer->var_id++;
+    }
+
+    bool ok = type_scheme_instantiate(scheme, new, type);
+    free(new);
+    return ok;
+}
+
 bool infer_expr(infer_t *infer, expr_t *expr)
 {
     switch (expr->tag) {
@@ -149,12 +164,20 @@ bool infer_expr(infer_t *infer, expr_t *expr)
             expr_var_t *var = (expr_var_t *)expr;
             expr->type = infer_freshvar(infer);
 
-            intptr_t bound;
-            if (env_find(infer->env, var->name, &bound) < 0) {
+            type_scheme_t *scheme;
+            if (env_find(infer->env, var->name, (intptr_t *)&scheme) < 0) {
                 printf("Unbound reference to '%s'\n", var->name);
                 return false;
             }
-            return infer_type_unify(expr->type, (type_t *)bound);
+
+            type_t *inst;
+            if (!infer_instantiate(infer, scheme, &inst)) {
+                printf("Failed to instantiate ");
+                type_scheme_println(scheme);
+                return false;
+            }
+
+            return infer_type_unify(expr->type, inst);
         }
 
         case EXPR_LAMBDA: {
@@ -162,18 +185,21 @@ bool infer_expr(infer_t *infer, expr_t *expr)
             expr->type = infer_freshvar(infer);
             type_t *fresh = infer_freshvar(infer);
 
+            type_scheme_t scheme;
+            type_scheme_init(&scheme, fresh, 0, NULL);
+
             env_t *env = infer->env;
-            infer->env = env_append(env, lam->bound, (intptr_t)fresh);
+            infer->env = env_append(env, lam->bound, (intptr_t)&scheme);
             if (!infer_expr(infer, lam->body)) {
                 printf("Failed to infer lambda body\n");
                 return false;
             }
 
-            infer->env = env_clear(infer->env, env);
-
             type_t **args = malloc(sizeof(type_t *) * 2);
             args[0] = fresh;
             args[1] = lam->body->type;
+
+            infer->env = env_clear(infer->env, env);
             return infer_type_unify(expr->type, type_con_new("->", 2, args));
         }
 
@@ -181,8 +207,13 @@ bool infer_expr(infer_t *infer, expr_t *expr)
             expr_apply_t *app = (expr_apply_t *)expr;
             expr->type = infer_freshvar(infer);
 
-            if (!infer_expr(infer, app->fun) || !infer_expr(infer, app->arg)) {
-                printf("Failed to infer apply expr\n");
+            if (!infer_expr(infer, app->fun)) {
+                printf("Failed to infer apply function\n");
+                return false;
+            }
+
+            if (!infer_expr(infer, app->arg)) {
+                printf("Failed to infer apply argument\n");
                 return false;
             }
 
@@ -202,8 +233,11 @@ bool infer_expr(infer_t *infer, expr_t *expr)
                 return false;
             }
 
+            type_scheme_t scheme;
+            type_scheme_init(&scheme, let->value->type, 0, NULL);
+
             env_t *env = infer->env;
-            infer->env = env_append(env, let->bound, (intptr_t)let->value->type);
+            infer->env = env_append(env, let->bound, (intptr_t)&scheme);
             if (!infer_expr(infer, let->body)) {
                 printf("Failed to infer let body\n");
                 return false;
@@ -246,7 +280,6 @@ bool infer_resolve(infer_t *infer, expr_t *expr)
                 && infer_resolve(infer, let->body);
         }
     }
-
     return false;
 }
 

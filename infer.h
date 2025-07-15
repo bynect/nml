@@ -3,7 +3,8 @@
 
 #include <stdbool.h>
 
-#include "ast.h"
+#include "type.h"
+#include "expr.h"
 #include "env.h"
 
 typedef struct {

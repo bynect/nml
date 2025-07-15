@@ -1,30 +1,7 @@
-#ifndef AST_H
-#define AST_H
+#ifndef EXPR_H
+#define EXPR_H
 
-#include <stdint.h>
-#include <stddef.h>
-
-typedef enum {
-    TYPE_VAR,
-    TYPE_CON,
-} type_tag_t;
-
-typedef struct {
-    type_tag_t tag;
-} type_t;
-
-typedef struct {
-    type_t base;
-    uint32_t id;
-    type_t *forward;
-} type_var_t;
-
-typedef struct {
-    type_t base;
-    const char *name;
-    size_t n_args;
-    type_t **args;
-} type_con_t;
+#include "type.h"
 
 typedef enum {
     EXPR_LIT,
@@ -69,16 +46,6 @@ typedef struct {
     expr_t *value;
     expr_t *body;
 } expr_let_t;
-
-type_t *type_var_new(uint32_t id);
-
-type_t *type_con_new(const char *name, size_t n_args, type_t **args);
-
-void type_print(type_t *type);
-
-void type_println(type_t *type);
-
-void type_free(type_t *type);
 
 expr_t *expr_lit_new(int64_t value);
 

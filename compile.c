@@ -3,7 +3,6 @@
 #include <stdlib.h>
 
 #include "compile.h"
-#include "ast.h"
 #include "env.h"
 
 void compile_init(compile_t *comp, FILE *file)

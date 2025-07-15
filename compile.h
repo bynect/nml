@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include "ast.h"
+#include "expr.h"
 #include "env.h"
 
 typedef struct {

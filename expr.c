@@ -3,83 +3,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "ast.h"
+#include "expr.h"
 #include "env.h"
-
-type_t *type_var_new(uint32_t id)
-{
-    type_var_t *type = calloc(1, sizeof(type_var_t));
-    type->base.tag = TYPE_VAR;
-    type->id = id;
-    return (type_t *)type;
-}
-
-type_t *type_con_new(const char *name, size_t n_args, type_t **args)
-{
-    type_con_t *type = calloc(1, sizeof(type_con_t));
-    type->base.tag = TYPE_CON;
-    type->name = name;
-    type->n_args = n_args;
-    type->args = args;
-    return (type_t *)type;
-}
-
-void type_print(type_t *type)
-{
-    switch (type->tag) {
-        case TYPE_VAR: {
-            type_var_t *var = (type_var_t *)type;
-            printf("'t%u", var->id);
-            break;
-        }
-
-        case TYPE_CON: {
-            type_con_t *con = (type_con_t *)type;
-            bool infix = !strcmp(con->name, "->");
-
-            if (!infix)
-                fputs(con->name, stdout);
-
-            if (con->n_args > 0) {
-
-                for (size_t i = 0; i < con->n_args; i++) {
-                    bool paren = con->args[i]->tag != TYPE_VAR &&
-                        !(con->args[i]->tag == TYPE_CON &&
-                        ((type_con_t *)con->args[i])->n_args == 0);
-
-                    if (paren) putc('(', stdout);
-                    type_print(con->args[i]);
-                    if (paren) putc(')', stdout);
-
-
-                    if (i != con->n_args - 1) {
-                        if (infix) fprintf(stdout, " %s ", con->name);
-                        else putc(' ', stdout);
-                    }
-                }
-            }
-            break;
-        }
-    }
-}
-
-void type_println(type_t *type)
-{
-    type_print(type);
-    puts("");
-}
-
-void type_free(type_t *type)
-{
-    if (type->tag == TYPE_CON) {
-        type_con_t *con = (type_con_t *)type;
-        for (size_t i = 0; i < con->n_args; i++)
-            type_free(con->args[i]);
-        free(con->args);
-    }
-
-    free(type);
-}
 
 expr_t *expr_lit_new(int64_t value)
 {
