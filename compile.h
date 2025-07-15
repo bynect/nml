@@ -10,7 +10,8 @@
 
 typedef struct {
     FILE *file;
-    int lam_id;
+    long lam_id;
+    long let_n;
     env_t *env;
 } compile_t;
 

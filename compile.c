@@ -10,6 +10,7 @@ void compile_init(compile_t *comp, FILE *file)
 {
     comp->file = file;
     comp->lam_id = 0;
+    comp->let_n = 0;
     comp->env = NULL;
 }
 
@@ -23,10 +24,16 @@ static bool compile_emit_var(compile_t *comp, expr_var_t *var)
         return false;
     }
 
-    if (offset == 0)
-        fprintf(comp->file, "\tmovq %%r14, %%r12\n");
-    else
-        fprintf(comp->file, "\tmovq %ld(%%r13), %%r12\n", offset);
+    if (offset == 0) {
+        fprintf(comp->file, "\tmovq %%r14, %%r12\t\t#arg %s\n",
+                var->name);
+    } else if (offset < 0) {
+        fprintf(comp->file, "\tmovq %ld(%%rbp), %%r12\t\t#let %s\n",
+                offset, var->name);
+    } else {
+        fprintf(comp->file, "\tmovq %ld(%%r13), %%r12\t\t#fv %s\n",
+                offset, var->name);
+    }
 
     return true;
 }
@@ -60,7 +67,15 @@ static bool compile_freevars(compile_t *comp, expr_t *expr, env_t **env)
 
         case EXPR_LET: {
             expr_let_t *let = (expr_let_t *)expr;
-            abort();
+            if (!compile_freevars(comp, let->body, env))
+                return false;
+
+            *env = env_remove(*env, let->bound);
+            if (!compile_freevars(comp, let->value, env))
+                return false;
+
+            comp->let_n++;
+            break;
         }
     }
     return true;
@@ -97,14 +112,18 @@ static bool compile_emit_lambda(compile_t *comp, expr_lambda_t *lam)
     }
 
     char *id = malloc(16);
-    snprintf(id, 16, "lambda_%d", comp->lam_id++);
+    snprintf(id, 16, "lambda_%ld", comp->lam_id++);
     lam->id = id;
 
+    comp->let_n = 0;
     env_t *freevars = NULL;
     if (!compile_freevars(comp, (expr_t *)lam, &freevars)) {
         printf("Failed to get freevars\n");
         return false;
     }
+
+    size_t let_n = comp->let_n;
+    comp->let_n = 0;
 
     long offset = 8;
     for (env_t *fv = freevars; fv; fv = fv->next) {
@@ -116,11 +135,23 @@ static bool compile_emit_lambda(compile_t *comp, expr_lambda_t *lam)
     comp->env = env_append(freevars, lam->bound, 0);
 
     fprintf(comp->file, "%s:\n", id);
+    if (let_n) {
+        fprintf(comp->file,
+                "\tpushq %%rbp\n"
+                "\tmovq %%rsp, %%rbp\n"
+                "\tsubq $%ld, %%rsp\n"
+                "\n",
+                let_n * 8);
+    }
+
     if (!compile_emit_expr(comp, lam->body))
         return false;
 
     lam->freevars = env_clear(comp->env, freevars);
     comp->env = env;
+
+    if (let_n)
+        fputs("\tleave\n", comp->file);
 
     fputs("\tret\n\n", comp->file);
     return true;
@@ -150,6 +181,23 @@ static bool compile_emit_apply(compile_t *comp, expr_apply_t *app)
     return true;
 }
 
+static bool compile_emit_let(compile_t *comp, expr_let_t *let)
+{
+    if (!compile_emit_expr(comp, let->value))
+        return false;
+
+    env_t *env = comp->env;
+    comp->env = env_append(env, let->bound, --comp->let_n * 8);
+
+    fprintf(comp->file, "\tmovq %%r12, %ld(%%rbp)\n", comp->let_n * 8);
+    if (!compile_emit_expr(comp, let->body))
+        return false;
+
+    comp->env = env_clear(comp->env, env);
+    comp->let_n++;
+    return true;
+}
+
 static bool compile_emit_expr(compile_t *comp, expr_t *expr)
 {
     switch (expr->tag) {
@@ -171,7 +219,7 @@ static bool compile_emit_expr(compile_t *comp, expr_t *expr)
 
         case EXPR_LET: {
             expr_let_t *let = (expr_let_t *)expr;
-            abort();
+            return compile_emit_let(comp, let);
         }
     }
     return true;

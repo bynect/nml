@@ -10,18 +10,21 @@ int main(int argc, char **argv)
 
     //expr_t *expr = expr_lit_new(42);
 
-    // (((\x -> \y -> \z -> x) 69) 42) 104
     expr_t *expr = expr_apply_new(
         expr_apply_new(
             expr_apply_new(
                 expr_lambda_new(
                     "x",
-                    expr_lambda_new(
+                    expr_let_new(
                         "y",
                         expr_lambda_new(
                             "z",
-                            expr_var_new("x")
-                        )
+                            expr_lambda_new(
+                                "k",
+                                expr_var_new("z")
+                            )
+                        ),
+                        expr_var_new("y")
                     )
                 ),
                 expr_lit_new(69)
@@ -45,7 +48,7 @@ int main(int argc, char **argv)
 
     if (ok) {
         puts("Compiling out.S");
-        if (system("gcc out.S") < 0)
+        if (system("gcc out.S -g") < 0)
             perror("system");
     } else {
         puts("Failed to compile");
