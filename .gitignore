@@ -4,3 +4,5 @@
 *.bin
 *.o
 lang
+*.S
+*.asm

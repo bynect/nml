@@ -94,6 +94,7 @@ expr_t *expr_lambda_new(const char *bound, expr_t *body)
     expr->base.tag = EXPR_LAMBDA;
     expr->bound = bound;
     expr->body = body;
+    expr->id = NULL;
     return (expr_t *)expr;
 }
 
@@ -149,8 +150,8 @@ void expr_print(expr_t *expr)
 
         case EXPR_APPLY: {
             expr_apply_t *app = (expr_apply_t *)expr;
-            bool fun_paren = app->fun->tag != EXPR_VAR;
-            bool arg_paren = app->arg->tag != EXPR_VAR;
+            bool fun_paren = app->fun->tag != EXPR_LIT && app->fun->tag != EXPR_VAR;
+            bool arg_paren = app->arg->tag != EXPR_LIT && app->arg->tag != EXPR_VAR;
 
             if (fun_paren) putc('(', stdout);
             expr_print(app->fun);
@@ -190,6 +191,7 @@ void expr_free(expr_t *expr)
         case EXPR_LAMBDA: {
             expr_lambda_t *lam = (expr_lambda_t *)expr;
             expr_free(lam->body);
+            free(lam->id);
             break;
         }
 

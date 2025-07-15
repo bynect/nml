@@ -52,6 +52,7 @@ typedef struct {
     expr_t base;
     const char *bound;
     expr_t *body;
+    char *id;
 } expr_lambda_t;
 
 typedef struct {
