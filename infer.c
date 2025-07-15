@@ -34,24 +34,60 @@ static bool infer_type_find(type_t *type, type_t **resolve)
     return true;
 }
 
-static bool infer_make_equal_to(type_t *type, type_t *other)
+static bool infer_type_resolve(type_t *type, type_t **resolve)
 {
-    type_t *end;
-    if (!infer_type_find(type, &end))
+    type_t *res;
+    if (!infer_type_find(type, &res))
         return false;
 
-    if (end->tag != TYPE_VAR) {
+    if (res->tag == TYPE_CON) {
+        type_con_t *con = (type_con_t *)res;
+
+        for (size_t i = 0; i < con->n_args; i++) {
+            if (!infer_type_resolve(con->args[i], &res))
+                return false;
+
+            con->args[i] = res;
+        }
+    }
+
+    *resolve = res;
+    return true;
+}
+
+static bool infer_make_equal_to(type_t *type, type_t *other)
+{
+    type_t *res;
+    if (!infer_type_find(type, &res))
+        return false;
+
+    if (res->tag != TYPE_VAR) {
         printf("Type already resolved to ");
-        type_println(end);
+        type_println(res);
         return false;
     }
 
-    ((type_var_t *)end)->forward = other;
+    ((type_var_t *)res)->forward = other;
     return true;
 }
 
 static bool infer_type_occurs(type_t *t1, type_t *t2)
 {
+    type_t *res;
+    if (!infer_type_find(t2, &res))
+        return false;
+
+    if (res->tag == TYPE_VAR && res == t1)
+        return true;
+
+    if (res->tag == TYPE_CON) {
+        type_con_t *con = (type_con_t *)res;
+        for (size_t i = 0; i < con->n_args; i++) {
+            if (infer_type_occurs(t1, con->args[i]))
+                return true;
+        }
+    }
+
     return false;
 }
 
@@ -184,7 +220,7 @@ bool infer_expr(infer_t *infer, expr_t *expr)
 bool infer_resolve(infer_t *infer, expr_t *expr)
 {
     type_t *res;
-    if (!infer_type_find(expr->type, &res))
+    if (!infer_type_resolve(expr->type, &res))
         return false;
 
     expr->type = res;
