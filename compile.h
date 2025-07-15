@@ -7,9 +7,16 @@
 
 #include "ast.h"
 
+typedef struct env {
+    const char *name;
+    int offset;
+    struct env *next;
+} env_t;
+
 typedef struct {
     FILE *file;
     int lam_id;
+    env_t *env;
 } compile_t;
 
 void compile_init(compile_t *comp, FILE *file);
