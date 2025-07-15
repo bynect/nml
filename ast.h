@@ -15,7 +15,7 @@ typedef struct {
 
 typedef struct {
     type_t base;
-    const char *name;
+    uint32_t id;
     type_t *forward;
 } type_var_t;
 
@@ -70,7 +70,7 @@ typedef struct {
     expr_t *body;
 } expr_let_t;
 
-type_t *type_var_new(const char *name);
+type_t *type_var_new(uint32_t id);
 
 type_t *type_con_new(const char *name, size_t n_args, type_t **args);
 

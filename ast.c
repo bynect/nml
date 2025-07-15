@@ -6,11 +6,11 @@
 #include "ast.h"
 #include "env.h"
 
-type_t *type_var_new(const char *name)
+type_t *type_var_new(uint32_t id)
 {
     type_var_t *type = calloc(1, sizeof(type_var_t));
     type->base.tag = TYPE_VAR;
-    type->name = name;
+    type->id = id;
     return (type_t *)type;
 }
 
@@ -29,15 +29,19 @@ void type_print(type_t *type)
     switch (type->tag) {
         case TYPE_VAR: {
             type_var_t *var = (type_var_t *)type;
-            printf("'%s", var->name);
+            printf("'t%u", var->id);
             break;
         }
 
         case TYPE_CON: {
             type_con_t *con = (type_con_t *)type;
-            fputs(con->name, stdout);
+            bool infix = !strcmp(con->name, "->");
+
+            if (!infix)
+                fputs(con->name, stdout);
 
             if (con->n_args > 0) {
+
                 for (size_t i = 0; i < con->n_args; i++) {
                     bool paren = con->args[i]->tag != TYPE_VAR &&
                         !(con->args[i]->tag == TYPE_CON &&
@@ -47,8 +51,11 @@ void type_print(type_t *type)
                     type_print(con->args[i]);
                     if (paren) putc(')', stdout);
 
-                    if (i != con->n_args - 1)
-                        putc(' ', stdout);
+
+                    if (i != con->n_args - 1) {
+                        if (infix) fprintf(stdout, " %s ", con->name);
+                        else putc(' ', stdout);
+                    }
                 }
             }
             break;
@@ -175,8 +182,16 @@ void expr_print(expr_t *expr)
 
         case EXPR_LET: {
             expr_let_t *let = (expr_let_t *)expr;
-            printf("let %s = ", let->bound);
+            printf("let %s", let->bound);
+
+            if (let->value->type) {
+                fputs(" : ", stdout);
+                type_print(let->value->type);
+            }
+
+            fputs(" = ", stdout);
             expr_print(let->value);
+
             printf(" in ");
             expr_print(let->body);
             break;

@@ -16,10 +16,7 @@ void infer_init(infer_t *infer, env_t *env)
 
 static type_t *infer_freshvar(infer_t *infer)
 {
-    // TODO: Fix leak
-    char *name = malloc(16);
-    snprintf(name, 16, "t%ld", infer->var_id++);
-    return type_var_new(name);
+    return type_var_new(infer->var_id++);
 }
 
 static bool infer_type_find(type_t *type, type_t **resolve)
@@ -160,8 +157,25 @@ bool infer_expr(infer_t *infer, expr_t *expr)
             return infer_type_unify(app->fun->type, arrow);
         }
 
-        case EXPR_LET:
-            break;
+        case EXPR_LET: {
+            expr_let_t *let = (expr_let_t *)expr;
+            expr->type = infer_freshvar(infer);
+
+            if (!infer_expr(infer, let->value)) {
+                printf("Failed to infer let value\n");
+                return false;
+            }
+
+            env_t *env = infer->env;
+            infer->env = env_append(env, let->bound, (intptr_t)let->value->type);
+            if (!infer_expr(infer, let->body)) {
+                printf("Failed to infer let body\n");
+                return false;
+            }
+
+            infer->env = env_clear(infer->env, env);
+            return infer_type_unify(expr->type, let->body->type);
+        }
     }
 
     return false;
@@ -190,8 +204,11 @@ bool infer_resolve(infer_t *infer, expr_t *expr)
                 && infer_resolve(infer, app->arg);
         }
 
-        case EXPR_LET:
-            break;
+        case EXPR_LET: {
+            expr_let_t *let = (expr_let_t *)expr;
+            return infer_resolve(infer, let->value)
+                && infer_resolve(infer, let->body);
+        }
     }
 
     return false;
