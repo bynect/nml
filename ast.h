@@ -65,6 +65,12 @@ type_t *type_var_new(const char *name);
 
 type_t *type_con_new(const char *name, size_t n_args, type_t **args);
 
+void type_print(type_t *type);
+
+void type_println(type_t *type);
+
+void type_free(type_t *type);
+
 expr_t *expr_var_new(const char *name);
 
 expr_t *expr_lambda_new(const char *bound, expr_t *body);
@@ -72,5 +78,11 @@ expr_t *expr_lambda_new(const char *bound, expr_t *body);
 expr_t *expr_apply_new(expr_t *fun, expr_t *arg);
 
 expr_t *expr_let_new(const char *bound, expr_t *value, expr_t *body);
+
+void expr_print(expr_t *expr);
+
+void expr_println(expr_t *expr);
+
+void expr_free(expr_t *expr);
 
 #endif
