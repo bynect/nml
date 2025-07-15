@@ -14,6 +14,16 @@ static env_t *env_append(const char *name, int offset, env_t *tail)
     return head;
 }
 
+static env_t *env_clear(env_t *head, env_t *until)
+{
+    while (head != until) {
+        env_t *next = head->next;
+        free(head);
+        head = next;
+    }
+    return head;
+}
+
 void compile_init(compile_t *comp, FILE *file)
 {
     comp->file = file;
@@ -26,7 +36,7 @@ static bool compile_emit_expr(compile_t *comp, expr_t *expr);
 static bool compile_emit_lambda(compile_t *comp, expr_lambda_t *lam)
 {
     if (lam->id != NULL) {
-        fprintf(comp->file, "\tleaq %s(%%rip), %%rax\n", lam->id);
+        fprintf(comp->file, "\tleaq %s(%%rip), %%r12\n", lam->id);
         return true;
     }
 
@@ -34,29 +44,17 @@ static bool compile_emit_lambda(compile_t *comp, expr_lambda_t *lam)
     snprintf(id, 16, "lambda_%d", comp->lam_id++);
     lam->id = id;
 
-    env_t *env = comp->env;
-    comp->env = env_append(lam->bound, 8, env);
-
     fprintf(comp->file, "%s:\n", id);
-
     if (!compile_emit_expr(comp, lam->body))
         return false;
 
     fprintf(comp->file, "\tret\n\n");
-
-    do {
-        env_t *next = comp->env->next;
-        free(comp->env);
-        comp->env = next;
-    } while (comp->env != env);
-    comp->env = env;
-
     return true;
 }
 
 static bool compile_emit_lit(compile_t *comp, expr_lit_t *lit)
 {
-    fprintf(comp->file, "\tmovq $%ld, %%rax\n", lit->value);
+    fprintf(comp->file, "\tmovq $%ld, %%r12\n", lit->value);
     return true;
 }
 
@@ -79,7 +77,7 @@ static bool compile_emit_var(compile_t *comp, expr_var_t *var)
         return false;
     }
 
-    fprintf(comp->file, "\tmovq %d(%%rsp), %%rax\n", offset);
+    fprintf(comp->file, "\tmovq %d(%%rsp), %%r12\n", offset);
     return true;
 }
 
@@ -88,12 +86,12 @@ static bool compile_emit_apply(compile_t *comp, expr_apply_t *app)
     if (!compile_emit_expr(comp, app->arg))
         return false;
 
-    fputs("\tpushq %rax\n", comp->file);
+    fputs("\tpushq %r12\n", comp->file);
 
     if (!compile_emit_expr(comp, app->fun))
         return false;
 
-    fputs("\tcall *%rax\n"
+    fputs("\tcall *%r12\n"
           "\taddq $8, %rsp\n",
           comp->file);
     return true;
@@ -135,8 +133,17 @@ static bool compile_lambdas(compile_t *comp, expr_t *expr)
 
         case EXPR_LAMBDA: {
             expr_lambda_t *lam = (expr_lambda_t *)expr;
-            return compile_lambdas(comp, lam->body)
-                && compile_emit_lambda(comp, lam);
+            env_t *env = comp->env;
+
+            comp->env = env_append(lam->bound, 8, env);
+            if (!compile_lambdas(comp, lam->body))
+                return false;
+
+            if (!compile_emit_lambda(comp, lam))
+                return false;
+
+            comp->env = env_clear(comp->env, env);
+            return true;
         }
 
         case EXPR_APPLY: {
@@ -160,19 +167,35 @@ bool compile_expr(compile_t *comp, expr_t *expr)
     if (!compile_lambdas(comp, expr))
         return false;
 
-    fputs(".globl main\n"
-          ".extern printf\n"
+    // r12 -> last value
+    // r13 -> current closure
+    // r14 -> temporary
+    // r15 -> temporary
+
+    fputs(".extern printf\n"
+          ".extern malloc\n"
+          ".globl main\n"
           "main:\n"
           "\tpushq %rbp\n"
-          "\tmovq %rsp, %rbp\n",
+          "\tmovq %rsp, %rbp\n"
+          "\tpushq %r12\n"
+          "\tpushq %r13\n"
+          "\tpushq %r14\n"
+          "\tpushq %r15\n"
+          "\txorq %r12, %r12\n"
+          "\txorq %r13, %r13\n",
           comp->file);
 
     if (!compile_emit_expr(comp, expr))
         return false;
 
-    fputs("\tmovq %rax, %rsi\n"
+    fputs("\tmovq %r12, %rsi\n"
           "\tleaq fmt(%rip), %rdi\n"
           "\tcall printf\n"
+          "\tpopq %r15\n"
+          "\tpopq %r14\n"
+          "\tpopq %r13\n"
+          "\tpopq %r12\n"
           "\tleave\n"
           "\tret\n"
           "\n"
