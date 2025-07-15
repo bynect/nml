@@ -16,6 +16,7 @@ typedef struct {
 typedef struct {
     type_t base;
     const char *name;
+    type_t *forward;
 } type_var_t;
 
 typedef struct {

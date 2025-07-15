@@ -1,10 +1,11 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "env.h"
 
-env_t *env_append(env_t *tail, const char *name, long value)
+env_t *env_append(env_t *tail, const char *name, intptr_t value)
 {
     env_t *head = malloc(sizeof(env_t));
     head->name = name;
@@ -13,7 +14,7 @@ env_t *env_append(env_t *tail, const char *name, long value)
     return head;
 }
 
-env_t *env_update(env_t *tail, const char *name, long value)
+env_t *env_update(env_t *tail, const char *name, intptr_t value)
 {
     for (env_t *env = tail; env; env = env->next) {
         if (!strcmp(name, env->name)) {
@@ -38,7 +39,7 @@ env_t *env_remove(env_t *tail, const char *name)
     return tail;
 }
 
-ssize_t env_find(env_t *env, const char *name, long *value)
+ssize_t env_find(env_t *env, const char *name, intptr_t *value)
 {
     size_t i = 0;
     for ( ; env; env = env->next) {

@@ -1,0 +1,21 @@
+#ifndef INFER_H
+#define INFER_H
+
+#include <stdbool.h>
+
+#include "ast.h"
+#include "env.h"
+
+typedef struct {
+    long var_id;
+    type_t *int_type;
+    env_t *env;
+} infer_t;
+
+void infer_init(infer_t *infer, env_t *env);
+
+bool infer_expr(infer_t *infer, expr_t *expr);
+
+void infer_free(infer_t *infer);
+
+#endif

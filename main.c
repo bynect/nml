@@ -3,38 +3,48 @@
 
 #include "ast.h"
 #include "compile.h"
+#include "infer.h"
 
 int main(int argc, char **argv)
 {
-    //expr_t *expr = expr_apply_new(expr_lambda_new("x", expr_var_new("x")), expr_lit_new(42));
+    expr_t *expr = expr_apply_new(expr_lambda_new("x", expr_var_new("x")), expr_lit_new(42));
 
     //expr_t *expr = expr_lit_new(42);
 
-    expr_t *expr = expr_apply_new(
-        expr_apply_new(
-            expr_apply_new(
-                expr_lambda_new(
-                    "x",
-                    expr_let_new(
-                        "y",
-                        expr_lambda_new(
-                            "z",
-                            expr_lambda_new(
-                                "k",
-                                expr_var_new("z")
-                            )
-                        ),
-                        expr_var_new("y")
-                    )
-                ),
-                expr_lit_new(69)
-            ),
-            expr_lit_new(42)
-        ),
-        expr_lit_new(104)
-    );
+    //expr_t *expr = expr_apply_new(
+    //    expr_apply_new(
+    //        expr_apply_new(
+    //            expr_lambda_new(
+    //                "x",
+    //                expr_let_new(
+    //                    "y",
+    //                    expr_lambda_new(
+    //                        "z",
+    //                        expr_lambda_new(
+    //                            "k",
+    //                            expr_var_new("z")
+    //                        )
+    //                    ),
+    //                    expr_var_new("y")
+    //                )
+    //            ),
+    //            expr_lit_new(69)
+    //        ),
+    //        expr_lit_new(42)
+    //    ),
+    //    expr_lit_new(104)
+    //);
 
     expr_println(expr);
+
+    infer_t infer;
+    infer_init(&infer, NULL);
+
+    if (!infer_expr(&infer, expr)) {
+        puts("Failed to infer types");
+        expr_free(expr);
+        return 1;
+    }
 
     FILE *out = fopen("out.S", "wb");
 
@@ -43,7 +53,6 @@ int main(int argc, char **argv)
 
     bool ok = compile_expr(&comp, expr);
     fclose(out);
-
     expr_free(expr);
 
     if (ok) {

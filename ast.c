@@ -7,7 +7,7 @@
 
 type_t *type_var_new(const char *name)
 {
-    type_var_t *type = malloc(sizeof(type_var_t));
+    type_var_t *type = calloc(1, sizeof(type_var_t));
     type->base.tag = TYPE_VAR;
     type->name = name;
     return (type_t *)type;
@@ -15,7 +15,7 @@ type_t *type_var_new(const char *name)
 
 type_t *type_con_new(const char *name, size_t n_args, type_t **args)
 {
-    type_con_t *type = malloc(sizeof(type_con_t));
+    type_con_t *type = calloc(1, sizeof(type_con_t));
     type->base.tag = TYPE_CON;
     type->name = name;
     type->n_args = n_args;
@@ -75,7 +75,7 @@ void type_free(type_t *type)
 
 expr_t *expr_lit_new(int64_t value)
 {
-    expr_lit_t *expr = malloc(sizeof(expr_lit_t));
+    expr_lit_t *expr = calloc(1, sizeof(expr_lit_t));
     expr->base.tag = EXPR_LIT;
     expr->value = value;
     return (expr_t *)expr;
@@ -83,7 +83,7 @@ expr_t *expr_lit_new(int64_t value)
 
 expr_t *expr_var_new(const char *name)
 {
-    expr_var_t *expr = malloc(sizeof(expr_var_t));
+    expr_var_t *expr = calloc(1, sizeof(expr_var_t));
     expr->base.tag = EXPR_VAR;
     expr->name = name;
     return (expr_t *)expr;
@@ -91,18 +91,16 @@ expr_t *expr_var_new(const char *name)
 
 expr_t *expr_lambda_new(const char *bound, expr_t *body)
 {
-    expr_lambda_t *expr = malloc(sizeof(expr_lambda_t));
+    expr_lambda_t *expr = calloc(1, sizeof(expr_lambda_t));
     expr->base.tag = EXPR_LAMBDA;
     expr->bound = bound;
     expr->body = body;
-    expr->id = NULL;
-    expr->freevars = NULL;
     return (expr_t *)expr;
 }
 
 expr_t *expr_apply_new(expr_t *fun, expr_t *arg)
 {
-    expr_apply_t *expr = malloc(sizeof(expr_apply_t));
+    expr_apply_t *expr = calloc(1, sizeof(expr_apply_t));
     expr->base.tag = EXPR_APPLY;
     expr->fun = fun;
     expr->arg = arg;
@@ -111,7 +109,7 @@ expr_t *expr_apply_new(expr_t *fun, expr_t *arg)
 
 expr_t *expr_let_new(const char *bound, expr_t *value, expr_t *body)
 {
-    expr_let_t *expr = malloc(sizeof(expr_let_t));
+    expr_let_t *expr = calloc(1, sizeof(expr_let_t));
     expr->base.tag = EXPR_LET;
     expr->bound = bound;
     expr->value = value;
