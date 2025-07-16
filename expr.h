@@ -45,6 +45,7 @@ typedef struct {
     const char *bound;
     expr_t *value;
     expr_t *body;
+    type_scheme_t scheme;
 } expr_let_t;
 
 expr_t *expr_lit_new(int64_t value);

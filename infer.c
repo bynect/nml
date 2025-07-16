@@ -280,20 +280,18 @@ bool infer_expr(infer_t *infer, expr_t *expr)
                 return false;
             }
 
-            type_scheme_t scheme;
-            if (!infer_generalize(infer, &scheme, let->value->type)) {
+            if (!infer_generalize(infer, &let->scheme, let->value->type)) {
                 printf("Failed to generalize let\n");
                 return false;
             }
 
             env_t *env = infer->env;
-            infer->env = env_append(env, let->bound, (intptr_t)&scheme);
+            infer->env = env_append(env, let->bound, (intptr_t)&let->scheme);
             if (!infer_expr(infer, let->body)) {
                 printf("Failed to infer let body\n");
                 return false;
             }
 
-            free(scheme.vars);
             infer->env = env_clear(infer->env, env);
             return infer_type_unify(expr->type, let->body->type);
         }

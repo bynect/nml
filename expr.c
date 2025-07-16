@@ -5,6 +5,7 @@
 
 #include "expr.h"
 #include "env.h"
+#include "type.h"
 
 expr_t *expr_lit_new(int64_t value)
 {
@@ -111,7 +112,7 @@ void expr_print(expr_t *expr)
 
             if (let->value->type) {
                 fputs(" : ", stdout);
-                type_print(let->value->type);
+                type_scheme_print(&let->scheme);
             }
 
             fputs(" = ", stdout);
