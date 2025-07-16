@@ -87,7 +87,7 @@ void type_scheme_init(type_scheme_t *scheme, type_t *type, size_t n_vars, type_i
     scheme->vars = vars;
 }
 
-bool type_scheme_instantiate(type_scheme_t *scheme, type_id_t *new, type_t **out)
+bool type_scheme_instantiate(type_scheme_t *scheme, type_var_t **new, type_t **out)
 {
     if (scheme->type->tag == TYPE_VAR) {
         type_var_t *var = (type_var_t *)scheme->type;
@@ -95,7 +95,7 @@ bool type_scheme_instantiate(type_scheme_t *scheme, type_id_t *new, type_t **out
 
         for (size_t i = 0; i < scheme->n_vars; i++) {
             if (scheme->vars[i] == var->id) {
-                res = type_var_new(new[i]);
+                res = (type_t *)new[i];
                 break;
             }
         }

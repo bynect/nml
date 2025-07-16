@@ -48,7 +48,7 @@ void type_free(type_t *type);
 
 void type_scheme_init(type_scheme_t *scheme, type_t *type, size_t n_vars, type_id_t *vars);
 
-bool type_scheme_instantiate(type_scheme_t *scheme, type_id_t *new, type_t **out);
+bool type_scheme_instantiate(type_scheme_t *scheme, type_var_t **new, type_t **out);
 
 void type_scheme_print(type_scheme_t *scheme);
 

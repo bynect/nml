@@ -142,16 +142,16 @@ static bool infer_type_unify(type_t *t1, type_t *t2)
 
 static bool infer_instantiate(infer_t *infer, type_scheme_t *scheme, type_t **type)
 {
-    type_id_t *new = NULL;
+    type_var_t **vars = NULL;
 
     if (scheme->n_vars > 0) {
-        new = calloc(scheme->n_vars, sizeof(type_id_t));
+        vars = calloc(scheme->n_vars, sizeof(type_var_t *));
         for (size_t i = 0; i < scheme->n_vars; i++)
-            new[i] = infer->var_id++;
+            vars[i] = (type_var_t *)infer_freshvar(infer);
     }
 
-    bool ok = type_scheme_instantiate(scheme, new, type);
-    free(new);
+    bool ok = type_scheme_instantiate(scheme, vars, type);
+    free(vars);
     return ok;
 }
 
