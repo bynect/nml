@@ -1,0 +1,32 @@
+(* A naive implementation of red-black trees *)
+
+data Color = Red | Black
+
+data Tree a = Node : Color * (Tree a) * a * (Tree a) | Leaf
+
+fun member x Leaf = False
+and member x (Node (_, a, y, b)) =
+  if x < y then member x a
+  else if x > y then member x b
+  else True
+
+fun balance Black (Node (Red, Node (Red, a, x, b), y, c)) z d =
+  Node (Red, Node (Black, a, x, b), y, Node (Black, c, z, d))
+fun balance Black (Node (Red, a, x, Node (Red, b, y, c))) z d =
+  Node (Red, Node (Black, a, x, b), y, Node (Black, c, z, d))
+fun balance Black a x (Node (Red, Node (Red, b, y, c), z, d)) =
+  Node (Red, Node (Black, a, x, b), y, Node (Black, c, z, d))
+fun balance Black a x (Node (Red, b, y, Node (Red, c, z, d))) =
+  Node (Red, Node (Black, a, x, b), y, Node (Black, c, z, d))
+and balance color a x b = Node (color, a, x, b)
+
+fun insert x t =
+  fun insert' Leaf = Node (Red, Leaf, x, Leaf)
+  and insert' (Node (color, a, y, b)) =
+    if x < y then balance color (insert' a) y b
+    else if x > y then balance color a y (insert' b)
+    else Node (color, a, y, b)
+  in
+  match insert' t with
+  | Leaf -> panic "Tree.insert with Leaf"
+  | Node (_, a, y, b) -> Node (Black, a, y, b)

@@ -1,0 +1,5 @@
+(* A logically uninhabited type *)
+data Void
+
+(* Ex falso quodlibet *)
+fun absurd _ : forall a. Void -> a = panic "No such thing!"

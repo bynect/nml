@@ -1,0 +1,8 @@
+fun apply_tup f t = match t with (a, b) -> (f a, f b)
+
+fun id x = x
+fun id2 x = x
+
+let _ = apply_tup id (1, 'a')
+let _ = apply_tup id2 (1, 'a')
+let _ = apply_tup (fun x -> x) (1, 'a')

@@ -1,0 +1,16 @@
+(* Test a bunch of stuff *)
+
+let id = \x -> x
+fun twice f = \x -> f (f x)
+
+fun const x _ = x
+fun apply f x = f x
+
+fun fst t = match t with (x, _) -> x
+fun snd t = match t with (_, y) -> y
+
+fun curry f : (a * b -> c) -> (a -> b -> c) =
+  \a -> \b -> f a b
+
+fun uncurry f : (a -> b -> c) -> (a * b -> c) =
+  \t -> match t with (a, b) -> f a b

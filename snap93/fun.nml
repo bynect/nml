@@ -1,0 +1,20 @@
+(* A bunch of functional stuff *)
+
+let id = \x -> x
+fun twice f = \x -> f (f x)
+
+fun const x _ = x
+fun apply f x = f x
+fun flip f a b = f b a
+
+fun tuple a b = (a, b)
+fun fst t = match t with (x, _) -> x
+fun snd t = match t with (_, y) -> y
+
+fun curry f : (a * b -> c) -> a -> b -> c =
+  \a -> \b -> f (a, b)
+
+fun uncurry f : (a -> b -> c) -> a * b -> c =
+  \t -> match t with (a, b) -> f a b
+
+fun compose f g = \x -> f (g x)

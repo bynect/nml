@@ -1,0 +1,7 @@
+(*
+fun snd x = match x with (_, x) -> x         let a = snd (1,2)     let b = snd (3, true)
+*)
+
+fun snd x = match x with (a, b) -> b         let a = snd (1,2)     let b = snd (3, true)
+
+fun nop x = match x with (_, _) -> x         let a = nop (1,2)     let b = nop (3, true)

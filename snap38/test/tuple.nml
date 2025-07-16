@@ -1,0 +1,19 @@
+fun fst t = match t with (x, _) -> x
+
+let _ : unit = fst ((), 'a')
+let _ : int = fst (1, ())
+let _ : float = fst (1.1, ())
+let _ : str = fst ("a", ())
+let _ : char = fst ('a', ())
+let _ : bool = fst (true, ())
+let _ : bool = fst (false, ())
+
+fun snd t = match t with (_, y) -> y
+
+let _ : unit = snd (1, ())
+let _ : int = snd ((), 1)
+let _ : float = snd (1.1, 1.1)
+let _ : str = snd (true, "a")
+let _ : char = snd ((), 'a')
+let _ : bool = snd ('a', true)
+let _ : bool = snd (1, false)

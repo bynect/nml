@@ -1,0 +1,44 @@
+TODO: Add opaque data types without constructors
+
+data X
+----
+https://gitlab.haskell.org/ghc/ghc/-/wikis/commentary/compiler/backends/llvm/design#RegisterPinning
+
+https://maartenfokkinga.github.io/utwente/mmf91m.pdf
+
+http://dreixel.net/research/pdf/ghp.pdf
+
+System FC with Explicit Kind Equality
+
+https://ieeexplore.ieee.org/document/39162
+
+https://en.wikipedia.org/wiki/Row_polymorphism
+
+https://gitlab.haskell.org/ghc/ghc/-/wikis/commentary/compiler/kinds
+
+https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.53.9402&rep=rep1&type=pdf
+
+SubML
+
+https://lptk.github.io/files/%5Bv1.8%5D%20simple-essence-algebraic-subtyping.pdf
+
+https://www.semanticscholar.org/paper/Polymorphism%2C-subtyping%2C-and-type-inference-in-Dolan-Mycroft/14a5fd3cf14c9e361210d4d4490a717dd8f2ba26
+
+https://hal.inria.fr/inria-00076025/document
+
+https://ieeexplore.ieee.org/document/316068
+
+https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/scopedlabels.pdf
+
+https://hal.inria.fr/inria-00073205
+
+----
+What to do about constructors? Represent with kinds K -> K like Haskell or
+follow a simpler approach like below?
+TODO: Learn how kind really works from Typing haskell in haskell
+
+Constructor with argument
+Cons = forall a. (a * List a) -> List a
+
+Constructor without argument (arg is not unified/constrained)
+Nil = forall a. List a

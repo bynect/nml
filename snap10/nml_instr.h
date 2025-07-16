@@ -1,0 +1,44 @@
+#ifndef INSTR
+#error "INSTR not defined"
+#endif
+
+INSTR(IADD,		_)
+INSTR(ISUB,		_)
+INSTR(IMUL,		_)
+INSTR(IDIV,		_)
+INSTR(IREM,		_)
+INSTR(INEG,		_)
+INSTR(IGT,		_)
+INSTR(ILT,		_)
+INSTR(IGE,		_)
+INSTR(ILE,		_)
+INSTR(IEQ,		_)
+INSTR(INE,		_)
+INSTR(SHR,		_)
+INSTR(SHL,		_)
+INSTR(AND,		_)
+INSTR(OR,		_)
+INSTR(XOR,		_)
+
+INSTR(FADD,		_)
+INSTR(FSUB,		_)
+INSTR(FMUL,		_)
+INSTR(FDIV,		_)
+INSTR(FNEG,		_)
+INSTR(FGT,		_)
+INSTR(FLT,		_)
+INSTR(FGE,		_)
+INSTR(FLE,		_)
+INSTR(FEQ,		_)
+INSTR(FNE,		_)
+
+INSTR(LOAD,		_)
+INSTR(STORE,	_)
+INSTR(ALLOC,	_)
+
+INSTR(ELEMOF,	_)
+INSTR(ADDROF,	_)
+
+INSTR(BR,		_)
+INSTR(RET,		_)
+INSTR(CALL,		_)

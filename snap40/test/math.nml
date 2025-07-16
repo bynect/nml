@@ -1,0 +1,18 @@
+(* factorial *)
+fun fact n =
+	if n = 1 then 1
+	else n * fact (n - 1)
+
+(* fibonacci *)
+fun fibx m a b =
+	if m = 0 then a
+	else fibx (m - 1) b (a + b)
+
+fun fib n = fibx n 0 1
+
+(* nested fibonacci *)
+fun fib2 n =
+	fun fib_in m a b =
+		if m = 0 then a
+		else fib_in (m - 1) b (a + b)
+	in fib_in n 0 1

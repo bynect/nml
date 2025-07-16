@@ -1,0 +1,21 @@
+fun assert x = if x then () else panic "!assert"
+
+let id = fun x -> x
+
+let _ = assert $ id () = ()
+let _ = assert $ id 1 = 1
+let _ = assert $ id 1.1 = 1.1
+let _ = assert $ id "a" = "a"
+let _ = assert $ id 'a' = 'a'
+let _ = assert $ id true = true
+let _ = assert $ id false = false
+
+fun const x _ = x
+
+let _ = assert $ const () () = ()
+let _ = assert $ const 1 () = 1
+let _ = assert $ const 1.1 () = 1.1
+let _ = assert $ const "a" () = "a"
+let _ = assert $ const 'a' () = 'a'
+let _ = assert $ const true () = true
+let _ = assert $ const false () = false

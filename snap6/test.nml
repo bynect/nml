@@ -1,0 +1,46 @@
+(* test.nml *)
+
+(* factorial *)
+fun fact n =
+	if n = 1 then 1
+	else n * fact (n - 1)
+
+(* fibonacci *)
+fun fibx m a b =
+	if m = 0 then a
+	else fibx (m - 1) b (a + b)
+
+fun fib n = fibx n 0 1
+
+(* nested fibonacci *)
+fun fib2 n =
+	fun fib_x2 m a b =
+		if m = 0 then a
+		else fib_x2 (m - 1) b (a + b)
+	in fib_x2 n 0 1
+
+(* print *)
+(* TODO
+let _ = print_str "hello, world"
+*)
+
+(* higher order *)
+fun inc x = x + 1
+fun twice f = fun x -> f (f x)
+
+(* algebraic types *)
+(* TODO
+type mytype = Is of bool | Nope
+*)
+
+(* polymorphism *)
+(* TODO
+fun identity x = x
+type 'a opt = Some of 'a | Nothing
+*)
+
+(* pattern matching *)
+(* TODO
+fun fst (a, _) = a
+fun snd (_, b) = b
+*)

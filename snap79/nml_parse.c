@@ -1,0 +1,1374 @@
+#include <ctype.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "nml_ast.h"
+#include "nml_expr.h"
+#include "nml_lit.h"
+#include "nml_loc.h"
+#include "nml_mac.h"
+#include "nml_err.h"
+#include "nml_lex.h"
+#include "nml_arena.h"
+#include "nml_parse.h"
+#include "nml_patn.h"
+#include "nml_decl.h"
+#include "nml_str.h"
+#include "nml_type.h"
+#include "nml_fmt.h"
+
+typedef void (*const Parser_Fn)(Parser *parse, Expr_Node **node);
+
+#define PFN(name) (Parser_Fn)parser_expr_ ## name
+
+typedef struct {
+	const Parser_Fn prefix;
+	const Parser_Fn infix;
+	const Parser_Prec prec;
+	const Parser_Assoc assoc;
+} Precedence;
+
+typedef struct {
+	const Sized_Str name;
+	const Type type;
+} Primitive;
+
+static MAC_INLINE inline Type parser_type(Parser *parse);
+static MAC_INLINE inline void parser_lit(Parser *parse, Lit_Value *value);
+static MAC_INLINE inline void parser_patn(Parser *parse, Patn_Node **node);
+
+static MAC_HOT void parser_expr_btick(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_uline(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_group(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_semi(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_dollar(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_nil(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_cons(Parser *parse, Expr_Node **node);
+
+static MAC_HOT void parser_expr_if(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_match(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_let(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_fun(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_lambda(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_app(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_ident(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_constr(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_binary(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_tuple(Parser *parse, Expr_Node **node);
+static MAC_HOT void parser_expr_lit(Parser *parse, Expr_Node **node);
+
+static MAC_HOT void parser_expr_prec(Parser *parse, Expr_Node **node, Parser_Prec prec);
+static MAC_HOT void parser_expr(Parser *parse, Expr_Node **node);
+
+static const Precedence precs[] = {
+	[TOK_EOF]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_ERR]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_AMP]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_COL]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_HASH]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_BTICK]	 = { NULL,			PFN(btick),		PREC_APP,		ASSOC_LEFT 	},
+	[TOK_ULINE]	 = { PFN(uline),	NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_LPAR]	 = { PFN(group),	NULL,			PREC_NONE,		ASSOC_NONE	},
+	[TOK_RPAR]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_LBRACK] = { PFN(nil),		NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_RBRACK] = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_LBRACE] = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_RBRACE] = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_BAR]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_PLUS]	 = { NULL,			PFN(binary),	PREC_TERM,		ASSOC_LEFT 	},
+	[TOK_MINUS]	 = { NULL,			PFN(binary),	PREC_TERM,		ASSOC_LEFT 	},
+	[TOK_STAR]	 = { NULL,			PFN(binary),	PREC_FACTOR,	ASSOC_LEFT 	},
+	[TOK_SLASH]	 = { NULL,			PFN(binary),	PREC_FACTOR,	ASSOC_LEFT 	},
+	[TOK_PERC]	 = { NULL,			PFN(binary),	PREC_FACTOR,	ASSOC_LEFT 	},
+	[TOK_PLUSF]	 = { NULL,			PFN(binary),	PREC_TERM,		ASSOC_LEFT 	},
+	[TOK_MINUSF] = { NULL,			PFN(binary),	PREC_TERM,		ASSOC_LEFT 	},
+	[TOK_STARF]	 = { NULL,			PFN(binary),	PREC_FACTOR,	ASSOC_LEFT 	},
+	[TOK_SLASHF] = { NULL,			PFN(binary),	PREC_FACTOR,	ASSOC_LEFT 	},
+	[TOK_PERCF]	 = { NULL,			PFN(binary),	PREC_FACTOR,	ASSOC_LEFT 	},
+	[TOK_CARET]	 = { NULL,			PFN(binary),	PREC_POWER,		ASSOC_RIGHT },
+	[TOK_DOT]	 = { NULL,			PFN(binary),	PREC_ACCESS,	ASSOC_NONE 	},
+	[TOK_AT]	 = { NULL,			PFN(binary),	PREC_CONCAT,	ASSOC_RIGHT	},
+	[TOK_BANG]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_GT]	 = { NULL,			PFN(binary),	PREC_COMPARE,	ASSOC_LEFT 	},
+	[TOK_LT]	 = { NULL,			PFN(binary),	PREC_COMPARE,	ASSOC_LEFT 	},
+	[TOK_GTE]	 = { NULL,			PFN(binary),	PREC_COMPARE,	ASSOC_LEFT 	},
+	[TOK_LTE]	 = { NULL,			PFN(binary),	PREC_COMPARE,	ASSOC_LEFT 	},
+	[TOK_EQ]	 = { NULL,			PFN(binary),	PREC_COMPARE,	ASSOC_LEFT 	},
+	[TOK_NE]	 = { NULL,			PFN(binary),	PREC_COMPARE,	ASSOC_LEFT 	},
+	[TOK_AMPAMP] = { NULL,			PFN(binary),	PREC_AND,		ASSOC_LEFT 	},
+	[TOK_BARBAR] = { NULL,			PFN(binary),	PREC_OR,		ASSOC_LEFT 	},
+	[TOK_ARROW]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_COLCOL] = { NULL,			PFN(cons),		PREC_CONCAT,	ASSOC_RIGHT	},
+	[TOK_COMMA]	 = { NULL,			PFN(tuple),		PREC_COMMA,		ASSOC_NONE	},
+	[TOK_SEMI]	 = { NULL,			PFN(semi),		PREC_SEMI,		ASSOC_RIGHT },
+	[TOK_DOLLAR] = { NULL,			PFN(dollar),	PREC_DOLLAR,	ASSOC_RIGHT	},
+	[TOK_TILDE]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_BSLASH] = { PFN(lambda),	NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_INT]	 = { PFN(lit),		NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_FLOAT]	 = { PFN(lit),		NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_STR]	 = { PFN(lit),		NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_CHAR]	 = { PFN(lit),		NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_IDENT]	 = { PFN(ident),	NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_UIDENT] = { PFN(constr),	NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_TRUE]	 = { PFN(lit),		NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_FALSE]	 = { PFN(lit),		NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_LET]	 = { PFN(let),		NULL,			PREC_BINDING,	ASSOC_NONE 	},
+	[TOK_IN]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_AND]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_FUN]	 = { PFN(fun),		NULL,			PREC_BINDING,	ASSOC_NONE 	},
+	[TOK_IF]	 = { PFN(if),		NULL,			PREC_IF,		ASSOC_NONE 	},
+	[TOK_THEN]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_ELSE]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_MATCH]	 = { PFN(match),	NULL,			PREC_BINDING,	ASSOC_NONE 	},
+	[TOK_WITH]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_AS]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_DATA]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_TYPE]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_WHERE]	 = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_MODULE] = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+	[TOK_IMPORT] = { NULL,			NULL,			PREC_NONE,		ASSOC_NONE 	},
+};
+
+static const Primitive prims[] = {
+#define TAG(name, id, _)	{ STR_STATIC(#id),	TYPE_ ## name },
+#define TYPE
+#define PRIM
+#include "nml_tag.h"
+#undef PRIM
+#undef TYPE
+#undef TAG
+	{ STR_STATIC(""),	TYPE_NONE },
+};
+
+static MAC_COLD void
+parser_error_append(Parser *parse, const Sized_Str msg, Error_Flag flags, Token *tok)
+{
+	if (MAC_UNLIKELY(parse->flags & PARSE_SYNC))
+	{
+		return;
+	}
+
+	parse->flags |= PARSE_MSG;
+	error_append(parse->err, parse->arena, msg, tok->loc, flags);
+}
+
+static MAC_INLINE inline void
+parser_error(Parser *parse, const Sized_Str msg, bool fatal)
+{
+	parser_error_append(parse, msg, ERR_ERROR, &parse->prev);
+
+	parse->flags |= PARSE_ERR;
+	if (fatal)
+	{
+		parse->flags |= PARSE_SYNC;
+	}
+}
+
+static MAC_INLINE inline void
+parser_warn(Parser *parse, const Sized_Str msg)
+{
+	parser_error_append(parse, msg, ERR_WARN, &parse->prev);
+}
+
+static MAC_HOT void
+parser_eat(Parser *parse)
+{
+	parse->prev = parse->curr;
+
+	if (MAC_UNLIKELY(parse->next.kind != TOK_ERR))
+	{
+		parse->curr = parse->next;
+		parse->next.kind = TOK_ERR;
+	}
+	else
+	{
+		lexer_next(&parse->lex, &parse->curr);
+	}
+
+	do
+	{
+		if (MAC_UNLIKELY(parse->curr.kind == TOK_ERR))
+		{
+			parser_error_append(parse, parse->curr.str, ERR_ERROR, &parse->curr);
+			parse->flags |= PARSE_ERR | PARSE_SYNC;
+		}
+		else
+		{
+			return;
+		}
+		lexer_next(&parse->lex, &parse->curr);
+	}
+	while (true);
+}
+
+static MAC_HOT inline void
+parser_back(Parser *parse)
+{
+	if (MAC_LIKELY(parse->next.kind == TOK_ERR))
+	{
+		parse->next = parse->curr;
+		parse->curr = parse->prev;
+	}
+}
+
+static MAC_HOT inline bool
+parser_check(Parser *parse, Token_Kind type)
+{
+	return parse->curr.kind == type;
+}
+
+static MAC_INLINE inline bool
+parser_check_delim(Parser *parse)
+{
+	return parser_check(parse, TOK_LET) ||
+			parser_check(parse, TOK_FUN) ||
+			parser_check(parse, TOK_IF) ||
+			parser_check(parse, TOK_MATCH);
+}
+
+static MAC_INLINE inline bool
+parser_check_keyword(Parser *parse)
+{
+	return parse->curr.kind >= TOK_LET;
+}
+
+static MAC_INLINE inline bool
+parser_check_oper(Parser *parse)
+{
+	return parse->curr.kind >= TOK_PLUS && parse->curr.kind <= TOK_TILDE;
+}
+
+static MAC_INLINE inline bool
+parser_check_lit(Parser *parse)
+{
+	return (parse->curr.kind >= TOK_IDENT && parse->curr.kind <= TOK_FALSE) ||
+			parser_check(parse, TOK_LPAR) || parser_check(parse, TOK_LBRACK);
+}
+
+static MAC_HOT inline bool
+parser_match(Parser *parse, Token_Kind type)
+{
+	if (parser_check(parse, type))
+	{
+		parser_eat(parse);
+		return true;
+	}
+
+	return false;
+}
+
+static MAC_HOT inline void
+parser_expect(Parser *parse, Token_Kind type, const Sized_Str msg)
+{
+	if (MAC_UNLIKELY(!parser_match(parse, type)))
+	{
+		parser_error(parse, msg, true);
+	}
+}
+
+static MAC_HOT void
+parser_sync(Parser *parse)
+{
+	if (MAC_UNLIKELY(parse->flags & PARSE_SYNC))
+	{
+		parse->flags &= ~PARSE_SYNC;
+
+		while (parse->curr.kind != TOK_EOF)
+		{
+			if (parser_check_delim(parse))
+			{
+				return;
+			}
+			parser_eat(parse);
+		}
+	}
+}
+
+static MAC_HOT Type
+parser_type_base(Parser *parse)
+{
+	if (parser_match(parse, TOK_LPAR))
+	{
+		Type type = parser_type(parse);
+		parser_expect(parse, TOK_RPAR, STR_STATIC("Expected `)` after group"));
+		return type;
+	}
+	else if (parser_match(parse, TOK_UIDENT))
+	{
+		Sized_Str name = parse->prev.str;
+		for (size_t i = 0; prims[i].type != TYPE_NONE; ++i)
+		{
+			if (STR_EQUAL(name, prims[i].name))
+			{
+				return prims[i].type;
+			}
+		}
+
+		size_t len = 0, i = 0;
+		Type *vars = NULL;
+
+		while (!parser_check(parse, TOK_ARROW) && !parser_check(parse, TOK_STAR) &&
+				!parser_check(parse, TOK_RPAR) && !parser_check(parse, TOK_EOF) &&
+				!parser_check_keyword(parse))
+		{
+			if (MAC_UNLIKELY(vars == NULL))
+			{
+				len = 4;
+				vars = arena_lock(parse->arena, len * sizeof(Type));
+			}
+			else if (MAC_UNLIKELY(i + 1 >= len))
+			{
+				len += 4;
+				vars = arena_update(parse->arena, vars, len * sizeof(Type));
+			}
+			vars[i++] = parser_type_base(parse);
+		}
+
+		if (vars != NULL)
+		{
+			vars = arena_update(parse->arena, vars, i * sizeof(Type));
+			arena_unlock(parse->arena, vars);
+		}
+		return type_constr_new(parse->arena, name, vars, i);
+	}
+	else
+	{
+		if (!parser_match(parse, TOK_ULINE))
+		{
+			parser_expect(parse, TOK_IDENT, STR_STATIC("Expected type variable name"));
+		}
+		return type_var_new(parse->arena, parse->prev.str);
+	}
+}
+
+static MAC_HOT Type
+parser_type_fun(Parser *parse)
+{
+	Type type = parser_type_base(parse);
+
+	if (parser_match(parse, TOK_ARROW))
+	{
+		size_t len = 8, i = 1;
+		Type *pars = arena_lock(parse->arena, len * sizeof(Type));
+		pars[0] = type;
+
+		do
+		{
+			if (MAC_UNLIKELY(i + 1 == len))
+			{
+				len += 4;
+				pars = arena_update(parse->arena, pars, len * sizeof(Type));
+			}
+			pars[i++] = parser_type_base(parse);
+		}
+		while (parser_match(parse, TOK_ARROW));
+
+		Type ret = pars[--i];
+		while (i > 0)
+		{
+			Type_Fun *fun = arena_alloc(parse->arena, sizeof(Type_Fun));
+			fun->par = pars[--i];
+			fun->ret = ret;
+			ret = TYPE_TAG(TAG_FUN, fun);
+		}
+
+		arena_update(parse->arena, pars, 0);
+		return ret;
+	}
+
+	return type;
+}
+
+static MAC_HOT Type
+parser_type_tuple(Parser *parse)
+{
+	Type type = parser_type_fun(parse);
+
+	if (parser_match(parse, TOK_STAR))
+	{
+		size_t len = 8, i = 0;
+		Type *items = arena_lock(parse->arena, len * sizeof(Type));
+		items[0] = type;
+
+		do
+		{
+			if (MAC_UNLIKELY(i + 1 == len))
+			{
+				len += 4;
+				items = arena_update(parse->arena, items, len * sizeof(Type));
+			}
+			items[i++] = parser_type_fun(parse);
+		}
+		while (parser_match(parse, TOK_STAR));
+
+		items = arena_update(parse->arena, items, i * sizeof(Type));
+		arena_unlock(parse->arena, items);
+
+		Type_Tuple *tuple = arena_alloc(parse->arena, sizeof(Type_Tuple));
+		tuple->items = items;
+		tuple->len = i;
+		return TYPE_TAG(TAG_TUPLE, tuple);
+	}
+
+	return type;
+}
+
+static MAC_INLINE inline Type
+parser_type(Parser *parse)
+{
+	return parser_type_tuple(parse);
+}
+
+static MAC_INLINE inline void
+parser_lit_int(Parser *parse, Lit_Value *value)
+{
+	Sized_Str str = parse->prev.str;
+
+	bool neg = false;
+	if (str.str[0] == '-')
+	{
+		neg = true;
+		++str.str;
+		--str.len;
+	}
+
+	int64_t res;
+	if (str.len > 1 && (str.str[1] == 'x' || str.str[1] == 'X'))
+	{
+		res	= str_to_int(STR_WLEN(str.str + 2, str.len - 2), 16);
+	}
+	else
+	{
+		res = str_to_int(str, 10);
+	}
+
+	if (res > INT32_MAX || res < INT32_MIN)
+	{
+		parser_warn(parse, STR_STATIC("Int literal truncated after overflow"));
+		res = res > INT32_MAX ? INT32_MAX : INT32_MIN;
+	}
+
+	const int32_t c_int = neg ? -res : res;
+	lit_init(value, LIT_INT, &c_int);
+}
+
+static MAC_INLINE inline void
+parser_lit_float(Parser *parse, Lit_Value *value)
+{
+	const double c_float = str_to_float(parse->prev.str);
+	lit_init(value, LIT_FLOAT, &c_float);
+}
+
+static MAC_HOT void
+parser_lit_chars(Parser *parse, Lit_Value *value)
+{
+	const char *src = parse->prev.str.str + 1;
+	const size_t len = parse->prev.str.len - 1;
+
+	char *buf = arena_alloc(parse->arena, len);
+	size_t buflen = 0;
+
+	for (size_t i = 0; i < len; ++i)
+	{
+		char c = src[i];
+		if (MAC_UNLIKELY(c == '\\'))
+		{
+			switch (src[i + 1])
+			{
+				case '\\':
+				case '"':
+				case '\'':
+					c = src[++i];
+					break;
+
+				case 'n':
+					c = '\n';
+					++i;
+					break;
+
+				case 'r':
+					c = '\r';
+					++i;
+					break;
+
+				case 't':
+					c = '\t';
+					++i;
+					break;
+
+				case 'x':
+					if (MAC_UNLIKELY(len < i + 3))
+					{
+						parser_error(parse, STR_STATIC("Invalid hex escape sequence"), false);
+						break;
+					}
+
+					c = str_to_int(STR_WLEN(&src[i + 2], 2), 16);
+					i += 3;
+					break;
+
+				default:
+					parser_error(parse, STR_STATIC("Invalid escape sequence"), false);
+					break;
+			}
+		}
+		buf[buflen++] = c;
+	}
+
+	if (parse->prev.kind == TOK_CHAR)
+	{
+		const char c_char = buf[0];
+		lit_init(value, LIT_CHAR, &c_char);
+	}
+	else
+	{
+		const Sized_Str c_str = STR_WLEN(buf, buflen);
+		lit_init(value, LIT_STR, &c_str);
+	}
+}
+
+static MAC_HOT void
+parser_lit(Parser *parse, Lit_Value *value)
+{
+	const bool c_true = true;
+	const bool c_false = false;
+
+	switch (parse->prev.kind)
+	{
+		case TOK_INT:
+			parser_lit_int(parse, value);
+			break;
+
+		case TOK_FLOAT:
+			parser_lit_float(parse, value);
+			break;
+
+		case TOK_STR:
+		case TOK_CHAR:
+			parser_lit_chars(parse, value);
+			break;
+
+		case TOK_TRUE:
+			lit_init(value, LIT_BOOL, &c_true);
+			break;
+
+		case TOK_FALSE:
+			lit_init(value, LIT_BOOL, &c_false);
+			break;
+
+		default:
+			parser_error(parse, STR_STATIC("Expected a constant"), true);
+			break;
+	}
+}
+
+static MAC_HOT void
+parser_expr_btick(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+
+	Sized_Str name = parse->curr.str;
+	parser_expect(parse, TOK_IDENT, STR_STATIC("Expected identifier after ```"));
+	parser_expect(parse, TOK_BTICK, STR_STATIC("Expected ``` after identifier"));
+
+	Expr_Node **args = arena_alloc(parse->arena, 2 * sizeof(Expr_Node *));
+	args[0] = *node;
+	parser_expr_prec(parse, &args[1], precs[TOK_BTICK].prec + precs[TOK_BTICK].assoc);
+
+	Expr_Node *ident = expr_ident_new(parse->arena, loc, name);
+	*node = expr_app_new(parse->arena, loc, ident, args, 2);
+}
+
+static MAC_HOT void
+parser_expr_uline(Parser *parse, Expr_Node **node)
+{
+	MAC_UNUSED(node);
+	parser_error(parse, STR_STATIC("Unexpected wildcard `_`"), false);
+}
+
+static MAC_HOT void
+parser_expr_group(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+	if (parser_match(parse, TOK_RPAR))
+	{
+		*node = expr_lit_new(parse->arena, loc, lit_new(LIT_UNIT, NULL));
+		return;
+	}
+	else if (parser_check_oper(parse))
+	{
+		Sized_Str ident = parse->curr.str;
+		parser_eat(parse);
+
+		if (parser_match(parse, TOK_RPAR))
+		{
+			*node = expr_ident_new(parse->arena, loc, ident);
+			return;
+		}
+		parser_back(parse);
+	}
+
+	parser_expr(parse, node);
+	parser_expect(parse, TOK_RPAR, STR_STATIC("Expected `)` after group"));
+}
+
+static MAC_HOT void
+parser_expr_semi(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+
+	Expr_Node *expr;
+	parser_expr(parse, &expr);
+	*node = expr_let_new(parse->arena, loc, TYPE_NONE, STR_STATIC("_"), *node, expr);
+}
+
+static MAC_HOT void
+parser_expr_dollar(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+
+	Expr_Node **arg = arena_alloc(parse->arena, sizeof(Expr_Node *));
+	parser_expr_prec(parse, arg, precs[TOK_DOLLAR].prec + precs[TOK_DOLLAR].assoc);
+	*node = expr_app_new(parse->arena, loc, *node, arg, 1);
+}
+
+static MAC_HOT void
+parser_expr_nil(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+	*node = expr_constr_new(parse->arena, loc, STR_STATIC("List.Nil"), NULL);
+
+	// NOTE: Handle list syntactic sugar
+	//
+	// The expression `[E1, ..., En]` is expanded to `E1 :: ... :: En :: []`
+	if (!parser_check(parse, TOK_RBRACK))
+	{
+		size_t len = 8, i = 0;
+		Expr_Node **items = arena_lock(parse->arena, len * sizeof(Expr_Node *));
+
+		do
+		{
+			if (MAC_UNLIKELY(i + 1 == len))
+			{
+				len += 8;
+				items = arena_update(parse->arena, items, len * sizeof(Expr_Node *));
+			}
+			parser_expr_prec(parse, &items[i++], PREC_COMMA + ASSOC_LEFT);
+		}
+		while (parser_match(parse, TOK_COMMA));
+
+		// FIXME: Ugly hack to recycle a little bit of the memory wasted here
+		Expr_Node *tmp[i];
+		memcpy(tmp, items, i * sizeof(Expr_Node *));
+		arena_update(parse->arena, items, 0);
+
+		while (i > 0)
+		{
+			Expr_Node **items = arena_alloc(parse->arena, 2 * sizeof(Expr_Node *));
+			items[0] = tmp[--i];
+			items[1] = *node;
+
+			Expr_Node *value = expr_tuple_new(parse->arena, loc, items, 2);
+			*node = expr_constr_new(parse->arena, loc, STR_STATIC("List.Cons"), value);
+		}
+	}
+
+	parser_expect(parse, TOK_RBRACK, STR_STATIC("Expected `]` after list"));
+}
+
+static MAC_HOT void
+parser_expr_cons(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+
+	Expr_Node **items = arena_alloc(parse->arena, 2 * sizeof(Expr_Node *));
+	items[0] = *node;
+	parser_expr(parse, &items[1]);
+
+	Expr_Node *value = expr_tuple_new(parse->arena, loc, items, 2);
+	*node = expr_constr_new(parse->arena, loc, STR_STATIC("List.Cons"), value);
+}
+
+static MAC_HOT void
+parser_expr_if(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+
+	Expr_Node *cond;
+	parser_expr(parse, &cond);
+
+	parser_expect(parse, TOK_THEN, STR_STATIC("Expected `then` after `if` condition"));
+	Expr_Node *b_then;
+	parser_expr(parse, &b_then);
+
+	parser_expect(parse, TOK_ELSE, STR_STATIC("Expected `else` after `then` expression"));
+	Expr_Node *b_else;
+	parser_expr(parse, &b_else);
+
+	*node = expr_if_new(parse->arena, loc, cond, b_then, b_else);
+}
+
+static MAC_HOT void
+parser_expr_match(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+
+	Expr_Node *value;
+	parser_expr(parse, &value);
+	parser_expect(parse, TOK_WITH, STR_STATIC("Expected `with` after `match` value"));
+
+	size_t len = 8, i = 0;
+	struct Expr_Match_Arm *arms = arena_lock(parse->arena, len * sizeof(struct Expr_Match_Arm));
+
+	do
+	{
+		if (MAC_UNLIKELY(i + 1 == len))
+		{
+			len += 8;
+			arms = arena_update(parse->arena, arms, len * sizeof(struct Expr_Match_Arm));
+		}
+
+		parser_patn(parse, &arms[i].patn);
+		parser_expect(parse, TOK_ARROW, STR_STATIC("Expected `->` after pattern"));
+		parser_expr(parse, &arms[i].expr);
+		++i;
+	}
+	while (parser_match(parse, TOK_BAR));
+
+	arms = arena_update(parse->arena, arms, i * sizeof(struct Expr_Match_Arm));
+	arena_unlock(parse->arena, arms);
+
+	*node = expr_match_new(parse->arena, loc, value, arms, i);
+}
+
+static MAC_HOT void
+parser_expr_let(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+	Sized_Str name = parse->curr.str;
+
+	if (parser_match(parse, TOK_LPAR))
+	{
+		if (parser_check_oper(parse))
+		{
+			name = parse->curr.str;
+		}
+		else
+		{
+			parser_error(parse, STR_STATIC("Expected operator name"), false);
+		}
+
+		parser_eat(parse);
+		parser_expect(parse, TOK_RPAR, STR_STATIC("Expected `)`"));
+	}
+	else if (!parser_match(parse, TOK_ULINE))
+	{
+		parser_expect(parse, TOK_IDENT, STR_STATIC("Expected `let` bound identifier"));
+	}
+
+	Type hint = parser_match(parse, TOK_COL) ? parser_type(parse) : TYPE_NONE;
+	parser_expect(parse, TOK_EQ, STR_STATIC("Expected `=` after `let` bound identifier"));
+
+	Expr_Node *value;
+	parser_expr(parse, &value);
+
+	Expr_Node *expr;
+	parser_expect(parse, TOK_IN, STR_STATIC("Expected `in` after `let` value expression"));
+	parser_expr(parse, &expr);
+
+	*node = expr_let_new(parse->arena, loc, hint, name, value, expr);
+}
+
+static MAC_HOT void
+parser_expr_fun(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+	Sized_Str name = parse->curr.str;
+
+	if (parser_match(parse, TOK_LPAR))
+	{
+		if (parser_check_oper(parse))
+		{
+			name = parse->curr.str;
+		}
+		else
+		{
+			parser_error(parse, STR_STATIC("Expected operator name"), false);
+		}
+
+		parser_eat(parse);
+		parser_expect(parse, TOK_RPAR, STR_STATIC("Expected `)`"));
+	}
+	else
+	{
+		parser_expect(parse, TOK_IDENT, STR_STATIC("Expected `fun` name"));
+	}
+
+	size_t len = 8, i = 0;
+	Sized_Str *pars = arena_lock(parse->arena, len * sizeof(Sized_Str));
+
+	while (parser_match(parse, TOK_IDENT) || parser_match(parse, TOK_ULINE))
+	{
+		if (MAC_UNLIKELY(i + 1 == len))
+		{
+			len += 8;
+			pars = arena_update(parse->arena, pars, len * sizeof(Sized_Str));
+		}
+		pars[i++] = parse->prev.str;
+	}
+
+	pars = arena_update(parse->arena, pars, i * sizeof(Sized_Str));
+	arena_unlock(parse->arena, pars);
+
+	Type hint = TYPE_NONE;
+	if (parser_match(parse, TOK_COL))
+	{
+		hint = parser_type(parse);
+	}
+
+	if  (MAC_UNLIKELY(i == 0))
+	{
+		parser_error(parse, STR_STATIC("Expected at least one `fun` parameter"), false);
+	}
+	parser_expect(parse, TOK_EQ, STR_STATIC("Expected `=` after `fun` parameters"));
+
+	Expr_Node *body;
+	parser_expr(parse, &body);
+
+	parser_expect(parse, TOK_IN, STR_STATIC("Expected `in` after `fun` body expression"));
+
+	Expr_Node *expr;
+	parser_expr(parse, &expr);
+
+	*node = expr_fun_new(parse->arena, loc, hint, name, pars, i, body, expr);
+}
+
+static MAC_HOT void
+parser_expr_lambda(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+
+	size_t len = 8, i = 0;
+	Sized_Str *pars = arena_lock(parse->arena, len * sizeof(Sized_Str));
+
+	while (parser_match(parse, TOK_IDENT) || parser_match(parse, TOK_ULINE))
+	{
+		if (MAC_UNLIKELY(i + 1 == len))
+		{
+			len += 8;
+			pars = arena_update(parse->arena, pars, len * sizeof(Sized_Str));
+		}
+		pars[i++] = parse->prev.str;
+	}
+
+	pars = arena_update(parse->arena, pars, i * sizeof(Sized_Str));
+	arena_unlock(parse->arena, pars);
+
+	if  (MAC_UNLIKELY(i == 0))
+	{
+		parser_error(parse, STR_STATIC("Expected at least one `lambda` parameter"), false);
+	}
+	parser_expect(parse, TOK_ARROW, STR_STATIC("Expected `->` after parameters"));
+
+	Expr_Node *body;
+	parser_expr(parse, &body);
+
+	*node = expr_lambda_new(parse->arena, loc, pars, i, body);
+}
+
+static MAC_HOT void
+parser_expr_app(Parser *parse, Expr_Node **node)
+{
+	if (parser_check_lit(parse))
+	{
+		size_t len = 8, i = 0;
+		Expr_Node **args = arena_lock(parse->arena, len * sizeof(Expr_Node *));
+
+		do
+		{
+			if (MAC_UNLIKELY(i + 1 == len))
+			{
+				len += 4;
+				args = arena_update(parse->arena, args, len * sizeof(Expr_Node *));
+			}
+			parser_expr_prec(parse, &args[i++], PREC_APP + ASSOC_LEFT);
+		}
+		while (parser_check_lit(parse));
+
+		arena_update(parse->arena, args, i * sizeof(Expr_Node *));
+		arena_unlock(parse->arena, args);
+
+		*node = expr_app_new(parse->arena, (*node)->loc, *node, args, i);
+	}
+}
+
+static MAC_HOT void
+parser_expr_ident(Parser *parse, Expr_Node **node)
+{
+	*node = expr_ident_new(parse->arena, parse->prev.loc, parse->prev.str);
+}
+
+static MAC_HOT void
+parser_expr_constr(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+	Sized_Str name = parse->prev.str;
+
+	Expr_Node *value = NULL;
+
+	// FIXME: Fix fragile parsing of constructors without argument
+	if (!parser_check(parse, TOK_EOF) && !parser_check(parse, TOK_RPAR) &&
+		!parser_check_keyword(parse))
+	{
+		parser_expr_prec(parse, &value, PREC_APP);
+	}
+
+	*node = expr_constr_new(parse->arena, loc, name, value);
+}
+
+static MAC_HOT void
+parser_expr_binary(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+	Token op = parse->prev;
+
+	Expr_Node **args = arena_alloc(parse->arena, 2 * sizeof(Expr_Node *));
+	args[0] = *node;
+	parser_expr_prec(parse, &args[1], precs[op.kind].prec + precs[op.kind].assoc);
+
+	Expr_Node *ident = expr_ident_new(parse->arena, loc, op.str);
+	*node = expr_app_new(parse->arena, loc, ident, args, 2);
+}
+
+static MAC_HOT void
+parser_expr_tuple(Parser *parse, Expr_Node **node)
+{
+	if ((*node)->kind == EXPR_TUPLE)
+	{
+		Expr_Tuple *tuple = (Expr_Tuple *)*node;
+		size_t len = tuple->len + 1;
+		arena_update(parse->arena, tuple->items, len * sizeof(Expr_Node *));
+		parser_expr_prec(parse, &tuple->items[tuple->len++], PREC_COMMA + 1);
+	}
+	else
+	{
+		Expr_Node **items = arena_alloc(parse->arena, 8 * sizeof(Expr_Node *));
+		items[0] = *node;
+		parser_expr_prec(parse, items + 1, PREC_COMMA + 1);
+		*node = expr_tuple_new(parse->arena, items[0]->loc, items, 2);
+	}
+
+	if (!parser_check(parse, TOK_COMMA))
+	{
+		Expr_Tuple *tuple = (Expr_Tuple *)*node;
+		arena_unlock(parse->arena, tuple->items);
+	}
+}
+
+static MAC_HOT void
+parser_expr_lit(Parser *parse, Expr_Node **node)
+{
+	Location loc = parse->prev.loc;
+	Lit_Value value;
+	parser_lit(parse, &value);
+	*node = expr_lit_new(parse->arena, loc, value);
+}
+
+static MAC_HOT void
+parser_expr_prec(Parser *parse, Expr_Node **node, Parser_Prec prec)
+{
+	parser_eat(parse);
+	Parser_Fn prefix = precs[parse->prev.kind].prefix;
+
+	if (prefix == NULL)
+	{
+		parser_error(parse, STR_STATIC("Unexpected token in expression"), true);
+		return;
+	}
+
+	Parser_Prec prev = parse->prec;
+	parse->prec = prec;
+	prefix(parse, node);
+
+	while (prec <= precs[parse->curr.kind].prec &&
+			MAC_LIKELY(!parser_check_delim(parse)))
+	{
+		parser_eat(parse);
+		precs[parse->prev.kind].infix(parse, node);
+	}
+
+	if (prec < PREC_APP)
+	{
+		parser_expr_app(parse, node);
+
+		while (prec <= precs[parse->curr.kind].prec &&
+				MAC_LIKELY(!parser_check_delim(parse)))
+		{
+			parser_eat(parse);
+			precs[parse->prev.kind].infix(parse, node);
+		}
+	}
+
+	parse->prec = prev;
+}
+
+static MAC_INLINE inline void
+parser_expr(Parser *parse, Expr_Node **node)
+{
+	parser_expr_prec(parse, node, PREC_BINDING);
+	parser_sync(parse);
+}
+
+static MAC_HOT void
+parser_decl_let(Parser *parse, Decl_Node **node)
+{
+	Location loc = parse->prev.loc;
+	Sized_Str name = parse->curr.str;
+
+	if (parser_match(parse, TOK_LPAR))
+	{
+		if (parser_check_oper(parse))
+		{
+			name = parse->curr.str;
+		}
+		else
+		{
+			parser_error(parse, STR_STATIC("Expected operator name"), false);
+		}
+
+		parser_eat(parse);
+		parser_expect(parse, TOK_RPAR, STR_STATIC("Expected `)`"));
+	}
+	else if (!parser_match(parse, TOK_ULINE))
+	{
+		parser_expect(parse, TOK_IDENT, STR_STATIC("Expected `let` bound identifier"));
+	}
+
+	Type hint = parser_match(parse, TOK_COL) ? parser_type(parse) : TYPE_NONE;
+	parser_expect(parse, TOK_EQ, STR_STATIC("Expected `=` after `let` bound identifier"));
+
+	Expr_Node *value;
+	parser_expr(parse, &value);
+
+	*node = decl_let_new(parse->arena, loc, hint, name, value);
+}
+
+static MAC_HOT void
+parser_decl_fun(Parser *parse, Decl_Node **node)
+{
+	Location loc = parse->prev.loc;
+	Sized_Str name = parse->curr.str;
+
+	if (parser_match(parse, TOK_LPAR))
+	{
+		if (parser_check_oper(parse))
+		{
+			name = parse->curr.str;
+		}
+		else
+		{
+			parser_error(parse, STR_STATIC("Expected operator name"), false);
+		}
+
+		parser_eat(parse);
+		parser_expect(parse, TOK_RPAR, STR_STATIC("Expected `)`"));
+	}
+	else
+	{
+		parser_expect(parse, TOK_IDENT, STR_STATIC("Expected `fun` name"));
+	}
+
+	size_t len = 8, i = 0;
+	Sized_Str *pars = arena_lock(parse->arena, len * sizeof(Sized_Str));
+
+	while (parser_match(parse, TOK_IDENT) || parser_match(parse, TOK_ULINE))
+	{
+		if (MAC_UNLIKELY(i + 1 == len))
+		{
+			len += 8;
+			pars = arena_update(parse->arena, pars, len * sizeof(Sized_Str));
+		}
+		pars[i++] = parse->prev.str;
+	}
+
+	pars = arena_update(parse->arena, pars, i * sizeof(Sized_Str));
+	arena_unlock(parse->arena, pars);
+
+	Type hint = TYPE_NONE;
+	if (parser_match(parse, TOK_COL))
+	{
+		hint = parser_type(parse);
+	}
+
+	if  (MAC_UNLIKELY(i == 0))
+	{
+		parser_error(parse, STR_STATIC("Expected at least one `fun` parameter"), false);
+	}
+	parser_expect(parse, TOK_EQ, STR_STATIC("Expected `=` after `fun` parameters"));
+
+	Expr_Node *body;
+	parser_expr(parse, &body);
+
+	*node = decl_fun_new(parse->arena, loc, hint, name, pars, i, body);
+}
+
+static MAC_HOT void
+parser_decl_data(Parser *parse, Decl_Node **node)
+{
+	Location loc = parse->prev.loc;
+
+	Sized_Str name = parse->curr.str;
+	parser_expect(parse, TOK_UIDENT, STR_STATIC("Expected `data` name"));
+
+	size_t len = 0, i = 0;
+	Sized_Str *vars = NULL;
+
+	while (parser_match(parse, TOK_IDENT))
+	{
+		if (MAC_UNLIKELY(vars == NULL))
+		{
+			len = 4;
+			vars = arena_lock(parse->arena, len * sizeof(Sized_Str));
+		}
+		else if (MAC_UNLIKELY(i + 1 >= len))
+		{
+			len += 4;
+			vars = arena_update(parse->arena, vars, len * sizeof(Sized_Str));
+		}
+		vars[i++] = parse->prev.str;
+	}
+
+	if (vars != NULL)
+	{
+		vars = arena_update(parse->arena, vars, i * sizeof(Sized_Str));
+		arena_unlock(parse->arena, vars);
+	}
+
+	size_t varlen = i;
+	parser_expect(parse, TOK_EQ, STR_STATIC("Expected `=` after `data` name"));
+
+	len = 4, i = 0;
+	struct Decl_Data_Constr *constrs = arena_lock(parse->arena, len * sizeof(struct Decl_Data_Constr));
+
+	do
+	{
+		if (MAC_UNLIKELY(i + 1 == len))
+		{
+			len += 4;
+			constrs = arena_update(parse->arena, constrs, len * sizeof(struct Decl_Data_Constr));
+		}
+
+		constrs[i].name = parse->curr.str;
+		parser_expect(parse, TOK_UIDENT, STR_STATIC("Expected `data` constructor name"));
+
+		constrs[i].type = parser_match(parse, TOK_COL) ? parser_type_tuple(parse) : TYPE_NONE;
+		++i;
+	}
+	while (parser_match(parse, TOK_BAR));
+
+	constrs = arena_update(parse->arena, constrs, i * sizeof(struct Decl_Data_Constr));
+	arena_unlock(parse->arena, constrs);
+
+	*node = decl_data_new(parse->arena, loc, name, vars, varlen, constrs, i);
+}
+
+static MAC_HOT void
+parser_decl_type(Parser *parse, Decl_Node **node)
+{
+	Location loc = parse->prev.loc;
+	Sized_Str name = parse->curr.str;
+
+	parser_expect(parse, TOK_IDENT, STR_STATIC("Expected `type` name"));
+	parser_expect(parse, TOK_EQ, STR_STATIC("Expected `=` after `type` name"));
+
+	Type type = parser_type(parse);
+	*node = decl_type_new(parse->arena, loc, name, type);
+}
+
+static MAC_HOT inline void
+parser_decl(Parser *parse, Decl_Node **node)
+{
+	switch (parse->prev.kind)
+	{
+		case TOK_LET:
+			parser_decl_let(parse, node);
+			break;
+
+		case TOK_FUN:
+			parser_decl_fun(parse, node);
+			break;
+
+		case TOK_DATA:
+			parser_decl_data(parse, node);
+			break;
+
+		case TOK_TYPE:
+			parser_decl_type(parse, node);
+			break;
+
+		default:
+			// NOTE: Should toplevel expressions be allowed?
+			parser_error(parse, STR_STATIC("Expected declaration"), true);
+			break;
+	}
+}
+
+static MAC_HOT void
+parser_patn_base(Parser *parse, Patn_Node **node)
+{
+	if (parser_match(parse, TOK_LPAR))
+	{
+		Location loc = parse->prev.loc;
+		if (parser_match(parse, TOK_RPAR))
+		{
+			*node = patn_lit_new(parse->arena, loc, lit_new(LIT_UNIT, NULL));
+		}
+		else if (parser_check_oper(parse))
+		{
+			Sized_Str ident = parse->curr.str;
+			parser_eat(parse);
+
+			parser_expect(parse, TOK_RPAR, STR_STATIC("Expected `)` after identifier"));
+			*node = patn_ident_new(parse->arena, loc, ident);
+		}
+		else
+		{
+			parser_patn(parse, node);
+			parser_expect(parse, TOK_RPAR, STR_STATIC("Expected `)` after group"));
+		}
+	}
+	else if (parser_match(parse, TOK_ULINE) || parser_match(parse, TOK_IDENT))
+	{
+		*node = patn_ident_new(parse->arena, parse->prev.loc, parse->prev.str);
+	}
+	else if (parser_match(parse, TOK_UIDENT))
+	{
+		Token constr = parse->prev;
+
+		if (!parser_check(parse, TOK_ARROW) && !parser_check(parse, TOK_AS) &&
+			!parser_check(parse, TOK_RPAR))
+		{
+			parser_patn_base(parse, node);
+		}
+		else
+		{
+			*node = NULL;
+		}
+		*node = patn_constr_new(parse->arena, constr.loc, constr.str, *node);
+	}
+	else if (parser_check_lit(parse))
+	{
+		Location loc = parse->curr.loc;
+		parser_eat(parse);
+
+		Lit_Value value;
+		parser_lit(parse, &value);
+		*node = patn_lit_new(parse->arena, loc, value);
+	}
+	else
+	{
+		parser_error(parse, STR_STATIC("Unexpected token in pattern"), false);
+	}
+}
+
+static MAC_HOT void
+parser_patn_tuple(Parser *parse, Patn_Node **node)
+{
+	parser_patn_base(parse, node);
+
+	if (parser_match(parse, TOK_COMMA))
+	{
+		size_t len = 8, i = 0;
+		Patn_Node **items = arena_lock(parse->arena, len * sizeof(Patn_Node *));
+		items[0] = *node;
+
+		do
+		{
+			if (MAC_UNLIKELY(i + 1 == len))
+			{
+				len += 8;
+				items = arena_update(parse->arena, items, len * sizeof(Patn_Node *));
+			}
+			parser_patn_base(parse, &items[i++]);
+		}
+		while (parser_match(parse, TOK_COMMA));
+
+		items = arena_update(parse->arena, items, i * sizeof(Patn_Node *));
+		arena_unlock(parse->arena, items);
+		*node = patn_tuple_new(parse->arena, items[0]->loc, items, i);
+	}
+}
+
+static MAC_HOT void
+parser_patn_as(Parser *parse, Patn_Node **node)
+{
+	parser_patn_tuple(parse, node);
+
+	if (parser_match(parse, TOK_AS))
+	{
+		Sized_Str name = parse->curr.str;
+		parser_expect(parse, TOK_IDENT, STR_STATIC("Expected `as` identifier"));
+
+		Patn_Node *patn = *node;
+		*node = patn_as_new(parse->arena, patn->loc, name, patn);
+	}
+}
+
+static MAC_INLINE inline void
+parser_patn(Parser *parse, Patn_Node **node)
+{
+	parser_patn_as(parse, node);
+}
+
+void
+parser_init(Parser *parse, Arena *arena, const Source *src)
+{
+	lexer_init(&parse->lex, src);
+	parse->next.kind = TOK_ERR;
+
+	parse->arena = arena;
+	parse->flags = PARSE_OK;
+	parse->err = NULL;
+	parse->prec = PREC_NONE;
+}
+
+MAC_HOT bool
+parser_parse(Parser *parse, Ast_Top *ast, Error_List *err)
+{
+	parse->err = err;
+
+	size_t len = 16, i = 0;
+	Decl_Node **decls = arena_lock(parse->arena, len * sizeof(Decl_Node *));
+
+	parser_eat(parse);
+	while (!parser_match(parse, TOK_EOF))
+	{
+		if (MAC_UNLIKELY(i + 1 == len))
+		{
+			len += 16;
+			decls = arena_update(parse->arena, decls, len * sizeof(Decl_Node *));
+		}
+
+		parser_eat(parse);
+		parser_decl(parse, &decls[i++]);
+		parser_sync(parse);
+	}
+
+	if (parse->flags & PARSE_ERR)
+	{
+		arena_update(parse->arena, decls, 0);
+		ast->decls = NULL;
+		ast->len = 0;
+		return false;
+	}
+	else
+	{
+		decls = arena_update(parse->arena, decls, i * sizeof(Decl_Node *));
+		ast->decls = decls;
+		ast->len = i;
+		return true;
+	}
+}

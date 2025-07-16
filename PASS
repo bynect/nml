@@ -1,0 +1,13 @@
+Frontend/Common passes:
+	- Lex (Lexical analysis)
+	- Parse (Semantic analysis)
+	- Check (Type checking/inference)
+	(?) Rename (Module/Full-name symbol resolution)
+
+Optional passes:
+	- Fold/Opt (Ast level folding and/or other optimizations)
+	- Lift/Hoist (Lambda lifting, closure conversion and function flattening)
+
+Backend passes:
+	- Comp (Compilation to Asm or native code)
+	- Tran (transpilation to Js/Python/etc)

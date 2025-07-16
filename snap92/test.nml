@@ -1,0 +1,19 @@
+(* Test *)
+
+let x = let x = 1 in 2
+let y = if 1 = 1 then True else False
+let h = fun x y = y in x
+let k = \x -> \y -> \z -> z x (z y)
+let s = \x -> \y -> x
+let y = match 1 with 1 -> () | 2 -> () | _ -> ()
+data Xor a = Xin : a * a | Xon : Xor a * a | Xix
+type Xox = Xor Int
+let kk : Int = 1
+let op : Xox = Xin (1, 2)
+let str : String = "a"
+let pop : Bool = False || True
+let sus : Char * Char = 'a', '\t'
+let s2 = "Str \"a\""
+let stop = 1.1 - 2.9
+let uu = ()
+let u2 = (uu)

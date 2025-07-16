@@ -1,0 +1,37 @@
+{- Syntax to decide -}
+module Idea (Void, type Nat(..), Ball(..))
+{-           ^      ^             ^
+             |      |             \ export type and data constructors
+             |      \ export kind and type constructors
+             \ export type (with not data constructors)
+-}
+
+data Ball = Ping
+          | Pong
+
+let some          : Maybe a -> Bool
+    some (Some _) = True
+    some _        = False
+
+{-
+let sigma : forall {k : KIND} {a : k}. a -> Sigma
+    sigma _ = Builtin.sigma
+-}
+
+data Void
+
+{- Bultin.unreachable : forall a b. a -> b -}
+let absurd   : forall a. Void -> a
+    absurd _ = Builtin.unreachable ()
+
+{- Types -}
+type Nat = S Nat | Zero
+
+type (+) : Nat -> Nat -> Nat
+     (+) a (S b) = S (a + b)
+     (+) a Zero  = a
+
+{- GADTs possible syntax -}
+data Vect : Nat -> Type -> Type
+     Nil  : Vect Zero a
+     Cons : a -> Vect n a -> Vect (S n) a

@@ -1,0 +1,14 @@
+(* Named function are always recursive *)
+fun f x = f x
+
+(* Function pattern *)
+fun assert True _ = ()
+and assert False s = panic ("Assert with " ++ s)
+
+fun fact 0 = 1
+and fact n = n * fact (n - 1)
+
+fun fact n =
+  fun fact' 0 acc = acc
+  and fact' n acc = fact' (n - 1) (n * acc)
+  in fact' n 0

@@ -1,0 +1,318 @@
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <signal.h>
+#include <time.h>
+
+#include "nml_dbg.h"
+#include "nml_expr.h"
+#include "nml_comp.h"
+#include "nml_err.h"
+#include "nml_hash.h"
+#include "nml_lex.h"
+#include "nml_mac.h"
+#include "nml_mem.h"
+#include "nml_mod.h"
+#include "nml_parse.h"
+#include "nml_dump.h"
+#include "nml_str.h"
+#include "nml_tab.h"
+#include "nml_type.h"
+#include "nml_fold.h"
+#include "nml_comp.h"
+#include "nml_ir.h"
+#include "nml_check.h"
+
+static Type_Fun fun_int = {
+	.par = TYPE_INT,
+	.ret = TYPE_INT,
+};
+
+static Type_Fun fun_float = {
+	.par = TYPE_FLOAT,
+	.ret = TYPE_FLOAT,
+};
+
+static Type_Fun fun_bool = {
+	.par = TYPE_BOOL,
+	.ret = TYPE_BOOL,
+};
+
+static Type_Fun fun_cmp = {
+	.par = TYPE_INT,
+	.ret = TYPE_BOOL,
+};
+
+static Type_Fun fun_bint = {
+	.par = TYPE_INT,
+	.ret = TYPE_TAG(TAG_FUN, &fun_int),
+};
+
+static Type_Fun fun_bfloat = {
+	.par = TYPE_FLOAT,
+	.ret = TYPE_TAG(TAG_FUN, &fun_float),
+};
+
+static Type_Fun fun_bbool = {
+	.par = TYPE_BOOL,
+	.ret = TYPE_TAG(TAG_FUN, &fun_bool),
+};
+
+static Type_Fun fun_bcmp = {
+	.par = TYPE_INT,
+	.ret = TYPE_TAG(TAG_FUN, &fun_cmp),
+};
+
+static Type type_iadd = TYPE_TAG(TAG_FUN, &fun_bint);
+static Type type_isub = TYPE_TAG(TAG_FUN, &fun_bint);
+static Type type_imul = TYPE_TAG(TAG_FUN, &fun_bint);
+static Type type_idiv = TYPE_TAG(TAG_FUN, &fun_bint);
+static Type type_irem = TYPE_TAG(TAG_FUN, &fun_bint);
+
+static Type type_fadd = TYPE_TAG(TAG_FUN, &fun_bfloat);
+static Type type_fsub = TYPE_TAG(TAG_FUN, &fun_bfloat);
+static Type type_fmul = TYPE_TAG(TAG_FUN, &fun_bfloat);
+static Type type_fdiv = TYPE_TAG(TAG_FUN, &fun_bfloat);
+static Type type_frem = TYPE_TAG(TAG_FUN, &fun_bfloat);
+
+static Type type_gt = TYPE_TAG(TAG_FUN, &fun_bcmp);
+static Type type_lt = TYPE_TAG(TAG_FUN, &fun_bcmp);
+static Type type_ge = TYPE_TAG(TAG_FUN, &fun_bcmp);
+static Type type_le = TYPE_TAG(TAG_FUN, &fun_bcmp);
+static Type type_eq = TYPE_TAG(TAG_FUN, &fun_bcmp);
+static Type type_ne = TYPE_TAG(TAG_FUN, &fun_bcmp);
+
+static Type type_and = TYPE_TAG(TAG_FUN, &fun_bbool);
+static Type type_or = TYPE_TAG(TAG_FUN, &fun_bbool);
+
+static Type type_ineg = TYPE_TAG(TAG_FUN, &fun_int);
+static Type type_fneg = TYPE_TAG(TAG_FUN, &fun_float);
+static Type type_not = TYPE_TAG(TAG_FUN, &fun_bool);
+
+static MAC_INLINE inline void
+repl_dump(const char *str)
+{
+	fprintf(stdout, "%s", str);
+	fflush(stdout);
+}
+
+static void
+repl_eval(Arena *arena, Hash_Default seed, const Source src)
+{
+	Parser parse;
+	parser_init(&parse, arena, &src);
+
+	bool succ = false;
+	Error_List err;
+	error_init(&err);
+
+	struct timespec start = {0, 0}, end = {0, 0};
+	clock_gettime(CLOCK_MONOTONIC, &start);
+
+	Ast_Top ast;
+	if (parser_parse(&parse, &ast, &err))
+	{
+		Type_Tab ctx;
+		type_tab_init(&ctx, seed);
+
+		type_tab_insert(&ctx, arena, STR_STATIC("+"), type_iadd);
+		type_tab_insert(&ctx, arena, STR_STATIC("-"), type_isub);
+		type_tab_insert(&ctx, arena, STR_STATIC("*"), type_imul);
+		type_tab_insert(&ctx, arena, STR_STATIC("/"), type_idiv);
+		type_tab_insert(&ctx, arena, STR_STATIC("%"), type_irem);
+
+		type_tab_insert(&ctx, arena, STR_STATIC("+."), type_fadd);
+		type_tab_insert(&ctx, arena, STR_STATIC("-."), type_fsub);
+		type_tab_insert(&ctx, arena, STR_STATIC("*."), type_fmul);
+		type_tab_insert(&ctx, arena, STR_STATIC("/."), type_fdiv);
+		type_tab_insert(&ctx, arena, STR_STATIC("%."), type_frem);
+
+		type_tab_insert(&ctx, arena, STR_STATIC(">"), type_gt);
+		type_tab_insert(&ctx, arena, STR_STATIC("<"), type_lt);
+		type_tab_insert(&ctx, arena, STR_STATIC(">="), type_ge);
+		type_tab_insert(&ctx, arena, STR_STATIC("<="), type_le);
+		type_tab_insert(&ctx, arena, STR_STATIC("="), type_eq);
+		type_tab_insert(&ctx, arena, STR_STATIC("!="), type_ne);
+
+		type_tab_insert(&ctx, arena, STR_STATIC("&&"), type_and);
+		type_tab_insert(&ctx, arena, STR_STATIC("||"), type_or);
+
+		type_tab_insert(&ctx, arena, STR_STATIC("~-"), type_ineg);
+		type_tab_insert(&ctx, arena, STR_STATIC("~-."), type_fneg);
+		type_tab_insert(&ctx, arena, STR_STATIC("~!"), type_not);
+
+		Type_Checker check;
+		checker_init(&check, seed, arena, &src, &ctx);
+		succ = checker_infer(&check, &ast, &err);
+	}
+
+	Module mod;
+	module_init(&mod, src.name);
+
+	if (succ)
+	{
+		Folder fold;
+		folder_init(&fold, arena, seed);
+		folder_ast(&fold, &ast, &err);
+
+		//Compiler comp;
+		//compiler_init(&comp, seed, arena, &mod);
+		//succ = compiler_compile(&comp, &ast, &err);
+	}
+
+	clock_gettime(CLOCK_MONOTONIC, &end);
+	fprintf(stdout, "Pipeline took %lf ms\n",
+			(end.tv_sec - start.tv_sec) * 1000 + (end.tv_nsec - start.tv_nsec) / 1e6);
+
+	dump_error(&err);
+	fprintf(stdout, "Lex dump:\n");
+
+	Lexer lex;
+	lexer_init(&lex, &src);
+	dump_lexer(&lex);
+
+	if (succ)
+	{
+		fprintf(stdout, "Ast dump:\n");
+		dump_ast(&ast);
+
+		fprintf(stdout, "Ir dump:\n");
+		dump_module(&mod);
+	}
+
+	fprintf(stdout, "Arena dump:\n");
+	dump_arena(arena);
+
+	arena_reset(arena, NULL);
+	arena_shrink(arena, ARENA_PAGE * 4);
+}
+
+static inline void
+repl_eof(Arena *arena, Hash_Default seed)
+{
+	char tmp[BUFSIZ];
+	size_t off = 0;
+
+	size_t size = BUFSIZ * 2;
+	char *src = arena_lock(arena, size);
+
+	while (fgets(tmp, BUFSIZ, stdin) != NULL)
+	{
+		size_t len = strlen(tmp);
+		if (off + len >= size)
+		{
+			size *= 2;
+			src = arena_update(arena, src, size);
+		}
+
+		memcpy(src + off, tmp, len);
+		off += len;
+	}
+
+	src = arena_update(arena, src, off);
+	arena_unlock(arena, src);
+	repl_eval(arena, seed, (Source) {STR_STATIC("@repl"), STR_WLEN(src, off)});
+}
+
+static inline void
+repl_run(Arena *arena, Hash_Default seed)
+{
+	struct sigaction act;
+	memset(&act, 0, sizeof(struct sigaction));
+	act.sa_handler = SIG_IGN;
+	act.sa_flags = SA_RESTART;
+	sigaction(SIGINT, &act, NULL);
+
+	char src[BUFSIZ];
+	repl_dump("nml repl\n# ");
+
+	while (fgets(src, BUFSIZ, stdin) != NULL)
+	{
+		repl_eval(arena, seed, (Source) {STR_STATIC("@repl"), STR_ZLEN(src)});
+		repl_dump("# ");
+	}
+	putc('\n', stdout);
+}
+
+static inline Sized_Str
+repl_file(Arena *arena, const char *name)
+{
+	FILE *file = fopen(name, "rb");
+	if (file == NULL)
+	{
+		fprintf(stderr, "Error opening file\n");
+		exit(1);
+	}
+
+	fseek(file, 0, SEEK_END);
+	size_t len = ftell(file);
+	char *src = arena_alloc(arena, len);
+
+	rewind(file);
+	if (fread(src, 1, len, file) < len)
+	{
+		fprintf(stderr, "Error reading file\n");
+		fclose(file);
+		exit(1);
+	}
+
+	fclose(file);
+	return STR_WLEN(src, len);
+}
+
+
+static inline Hash_Default
+repl_seed(void)
+{
+	FILE *file = fopen("/dev/urandom", "rb");
+	Hash_Default seed;
+
+	if (file == NULL)
+	{
+		seed = (long)&file;
+		return seed;
+	}
+
+ 	if (fread(&seed, sizeof(Hash_Default), 1, file) != sizeof(Hash_Default))
+	{
+		fclose(file);
+		seed = (long)&file;
+		return seed;
+	}
+
+	fclose(file);
+	return seed;
+}
+
+int
+main(int argc, const char **argv)
+{
+	Arena arena;
+	arena_init(&arena, ARENA_PAGE * 4);
+
+	Hash_Default seed = repl_seed();
+	if (argc == 2 && !strcmp(argv[1], "--eof"))
+	{
+		repl_eof(&arena, seed);
+	}
+	else if (argc == 3 && !strcmp(argv[1], "--file"))
+	{
+		Sized_Str src = repl_file(&arena, argv[2]);
+		repl_eval(&arena, seed, (Source) {STR_ZLEN(argv[2]), src});
+	}
+	else if (argc == 1)
+	{
+		repl_run(&arena, seed);
+	}
+	else
+	{
+		fprintf(stderr, "Unexpected argument\n");
+		return 1;
+	}
+
+	arena_free(&arena);
+	return 0;
+}

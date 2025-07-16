@@ -1,0 +1,209 @@
+TODO: nml_patn for checking refutable and irrefutable patterns + patterns correctness + if pattern matches
+TODO: nml_dbg for debug related information (actually only location)
+TODO: nml_ir nml_sym and other codegen related file must be implemented
+TODO: bytecode/native codegen
+TODO: INTRODUCE MORE LLVM LIKE SYNTAX , create custom types for ir (including void), utilize this types and recreate from scratch instr etc, create instr specialized function like instr_controlflow etc,
+		(MAYBE) move nml_instr.h to nml_op.h and use nml_instr.* from Instr and related functions
+
+TODO: (very important) reduce unit function to void and eliminate unit parameters from function
+TODO: fix function calling in ir, fix types in ir, fix variables in ir ++ come up with a way to implement partial application in native code
+TODO: (super important) fix type checker for polymorphic types
+TODO: implement 'type' keyword for variants and structs, and for the time being implement type alias
+TODO: (future) implement a solid type system for polymorphism with things like haskell typeclass or rust traits + create a module system like ocamls 'module, sig, struct' but better
+TODO: Create a serious symbol table in the module creation that stores a linked list of shadowed names or create a way to automatically mangle globals, anyway implement the symbol table in the compiler / ir module generation
+TODO: fix ir types (void, ptr, fun, bits, flt)
+TODO: (future) create a formatter/ pretty printer -- requires to add special nodes to the parser to handle comments
+TODO: copy the polymorphic type checker from oaf-lang (but java is a pain :/)
+TODO: VERY IMPORTANT rewrite the type checker for constraint based type inference (use various reference + GHC method)
+TODO: C compiler (should be easier than both vm and ir <-- or so I tought .-.) IMPORTANT requires polymorphism over kinds or boxing
+TODO/CHECK: is rec v = e1 in e2 really equal to let v = fix (v -> e1) in e2 ??
+TODO: Should toplevel only allow declarations like Haskell or expression like OCaml?
+TODO: nml goo (file and blobs) aka nml specific serialized format for bytecode
+TODO: Fix/Rethink of declaration shadowing and signature declaration (like Haskell or Idris)
+TODO/IDEA: Create a list of functions/globals and generate a function for every nested lambda etc using LLVMValueRef etc for a table maintaining a pseudo symbol-table additional to this list
+TODO: VERY IMPORTANT == Lambda lifting and Closure conversion have to be implemented as 1 or 2 passes before compilation
+
+TODO: comp directory: Compiler for nml (NML_*_H headers), ir directory: IR targeted by compiler (NIR_*_H headers) (subdirectories: opt, asm, bc, etc)
+TODO: rt directory: runtime system (NRT_*_H headers), if a vm is implemented, it should go here
+TODO: gc directory: (NGC_*_H) if a vm is implemented this should be a vm/native agnostic garbage collector, if no vm is created use rt istead of gc dir
+
+-----
+TODO: Algebraic datatypes, at least non polymorphic ones, divide constructors (Id) with identifiers (id) and start thinking about a module system
+TODO: Implement recursive bindings with fixpoint [[ forall a. (a -> a) -> a ]], also reimplement the checker from scratch using constraints
+TODO: How should be local function handled???? Transform to lambdas [[ let x = (\y -> y) ]] or keep separate and more difficult to inline ???
+TODO: Implement qualified (including module names) identifiers and constructors [[ X.Y.id, X.Y.Constr ]], also handle constructors differently than identifiers
+
+TODO: Learn from OCaml type inference
+TODO: Remove Type_Scheme struct and add a type kind that introduces polymorphism with bound variables like OCaml Tpoly/Tunivar. Maybe this can  also be used to introduce higher rank polymorphism annotated with [[ forall a1 an. t ]] in non prenex position
+TODO: Correctly implement TYPE_FORALL and univars used by generalization and quantification
+TODO: Add support for rank-N polymorphism by using the forall keyword
+TODO: Consider adding support for GADTs and existentials types (in the far future)
+
+NOTE: Add debug asserts that can be turned off at compile time and help keep invariants in check
+TODO: Rework lexer parser etc
+
+TODO: Haskell and OCaml parse tuples differently, commas in OCaml bind tighter than in Haskell so [[ \x y -> x, y ]] is a valid function of type [[ a -> b -> a * b ]] in OCaml and an error in Haskell. How should tuples be handled then?
+
+TODO: Fix vim syntax file to make it more like the Haskell one
+
+----------------------------------------------------
+	*NML compilation process*
+
+NML = Normalized Meta Language
+NIL/NIR = Normalized Intermediate Language/Representation
+
+ 																				(repeat N times)
+ 	 															 	 	  	 _______________________
+  																			/                       \
+ 																			V						|
+NML ==> Lexer ==> Parser ==> Verifier/Analyzer ==> Inferencer/Solver ==> Folder ==> Inliner ==> Simplifier ==> Compiler ==> NIL
+|		|		  |			 |					   |					 |     		|			| 			   |			|
+|		|		  |			 |					   |					 |	   		|			| 			   |			`--> Intermediate language
+|		|		  |			 |					   |					 |	   		|			| 			   `--> Compile the optimized ast
+|		|		  |			 |					   |					 |	   		|			`--> Simplify and optimize expressions
+|		|		  |			 |					   |					 |	   		`--> Function inlining (high level)
+|		|		  |			 |					   |					 `--> Constant folding and propagation (high level)
+|		|		  |			 |					   `--> Type inference and checking, optionally solve the constraints splitting the process for better errors
+|		|		  |			 `--> Optional: Verify that the parsed ast is correct and analyze for better optimizations
+|		|		  `--> Semantic analysis, ast creation
+|		`--> Lexical analysis, tokenization
+`--> Source language
+
+----------------------------------------------------
+
+Roadmap and possible improvements:
+	- Mostly use unboxed types and polymorphic specializations (instead of the automatic boxed type)
+	- To improve unboxing create layout/kind (possibly specified with NIL syntax or as a record) that let the user specify polymorphism over them, like the OCaml Unboxing talk
+	- Analyze use of values to implement in-place mutations for the otherwise immutable functional data structures
+	- Generational garbage collector (based on OCaml, QUISH and Poison collectors)
+	- (Heavy) Optimizations for algebraic effect handlers
+	- Use NIL/NIR instead of more heavy IR like LLVM (NIL can be converted later to LLVM)
+
+Useful passes to add (maybe):
+	- Emit type inference and other informations for each compiled module (aka file) in an "interface file" automatically, without the need for the user to write them (unlike OCaml and like Haskell)
+	- Renamer (unique name for every binding) also read GHC renamer that qualifies names based on modules
+	- Analysis for warnings (non exhaustive patterns, unreachable branches, etc)
+	- Desugaring pass that transforms the ast to a simplified structure (like Haskell Core), also read below
+
+TODO:
+	- Add structs/records
+	- Compile pattern matching to decision trees and matrix (as in papers) (NOTE: Obviously rearrange the cases in an efficent way)
+	- Consider if desugaring expressions (also decls?) to a simpler data structure, like Haskell's Core, is worth it or not
+	- Improve inliner for named functions and handle large functions called multiple times
+	- Learn about CFG based optimizations for functional languages
+	- Lambda calculus based semplifications like eta expansions/conversions and beta reduction (also alpha conversion can be used for renaming, but captured names aka free variables should be preserved)
+
+Other possible high level optimizations (on the ast and not on NIL):
+	- Fusion or deforestation, apply rules to eliminate temporary structures when chaining list processing functions
+	- Stream fusion, a more complicate way of fusion (NOTE: Not going to implement this anytime soon)
+	- More powerful inlining: Once again see GHC
+	- Specialization and Unboxing: Specialize polymorphic function so that they can be used without the boxing overhead
+	- Let-Floating out computations from lambda and storing them in their environment (so that they are not computed)
+	- Let-Floating inwards computations only to the branches in which they are used
+	- Demand or strictness analysis is more important for lazy languages like Haskell, but can still be used to gather information for further optimization
+	- Worker Wrapper binds (TODO: Check how they work and what they do)
+	- Common sub-expression elimination, taking advantage of the fact that every non-effective and non-monadic computation (function application) is pure
+	- Check GHC SpecConstr that separates the function cases and limits boxing (but works well only with Haskell multi-function-declaration-with-patterns)
+
+Consider removing or changing completely:
+	- Merger pass that merges nested applications and lambdas (NOTE: This could also merge recursive match on the same thing)
+	- Hoister pass that hoists lambas outside of nested functions (can be done in the compiler instead)
+
+See GHC simplifier passes: https://gitlab.haskell.org/ghc/ghc/-/wikis/commentary/compiler/core-to-core-pipeline
+GHC single module compilation: https://gitlab.haskell.org/ghc/ghc/-/wikis/commentary/compiler/hsc-main
+CodePrep: https://gitlab.haskell.org/ghc/ghc/blob/master/compiler/GHC/CoreToStg/Prep.hs
+
+GHC opts: https://downloads.haskell.org/~ghc/9.0.1/docs/html/users_guide/using-optimisation.html
+GHC pipeline: https://www.stephendiehl.com/posts/ghc_01.html
+
+Useful link on fusion: https://markkarpov.com/tutorial/ghc-optimization-and-fusion.html
+GHC opts SO: https://stackoverflow.com/questions/12653787/what-optimizations-can-ghc-be-expected-to-perform-reliably
+
+Lambda calculus reductions SO: https://stackoverflow.com/questions/34140819/lambda-calculus-reduction-steps
+Eta conversion SO: https://cstheory.stackexchange.com/questions/8259/whats-the-point-of-eta-conversion-in-lambda-calculus
+GADTs Haskell SO: https://stackoverflow.com/questions/60080678/clarification-on-existential-types-in-haskell
+
+----------------------------------------------------
+
+NML module system
+
+TODO
+
+NML file structure
+
+Compilation starts from a root directory which is the prefix to all the file/submodule qualified names
+
+Example:
+
+comp/						<=== Root directory
+comp/check/					<=== Sub directory
+comp/check/type.nml			<=== Qualified name = Comp.Check.Type
+comp/check/infer.nml		<=== Qualified name = Comp.Check.Infer
+comp/driver/main.nml		<=== Qualified name = Comp.Driver.Main
+comp/BuiltIn/IO.nml			<=== Qualified name = Comp.BuiltIn.IO
+comp/TesT.nml				<=== Qualified name = Comp.TesT
+
+Qualified names are always uppercase.
+
+File name resolution works using the following steps:
+	1. Remove the root directory prefix
+	2. Split at every dot which represents subdirectories
+	3. Find the last module name and open it
+	4. Resolve from that module the identifier
+
+Example:
+
+Comp.Check.Type.is_type_fun			<=== Fully qualified name
+Check.Type.is_type_fun				<=== 1. step
+Check/Type							<=== 2. step
+Type.nml							<=== 3. step
+is_type_fun							<=== 4. step
+
+----------------------------------------------------
+
+NML compiler directory structure
+
+VERY IMPORTANT TODO: Write compiler in NML (https://en.wikipedia.org/wiki/Bootstrapping_(compilers))
+
+boot/* 			<=== Bootstrapping compiler written in C (?)
+comp/*			<=== Self-Hosted compiler written in NML
+docs/*			<=== Documentation
+base/*			<=== Base library
+test/*			<=== Tests
+
+----------------------------------------------------
+
+Qualities of NML (just like SML here https://www.smlnj.org/sml.html):
+
+Safe (sound type system)
+
+Modular (module system)
+
+Strict (call by value)
+
+Polymorphic (parametric polymorphism, TODO: optional typed higer rank polymorphism)
+
+Type inference
+
+----------------------------------------------------
+
+Take inspiration from:
+
+* SML (SML/NJ)
+* Haskell (GHC)
+* SuccessorML (Hamlet)
+* OCaml
+* Idris
+* Agda
+* Rust
+
+
+Intresting things:
+
+IMPORTANT: Modular implicits, OCaml alternative to Haskell's typeclasses that use implicit ML modules passing
+
+Intresting names:
+
+Flavour, Kinds, Types, Sorts, Options, Sets, Maps, Binds, Bindings, Mappings
+
+----------------------------------------------------

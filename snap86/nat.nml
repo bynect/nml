@@ -1,0 +1,11 @@
+(* Peano numbers *)
+data Nat = Zero | Succ : Nat
+
+fun zero Zero = True
+and zero _ = False
+
+fun add Zero b = b
+and add (Succ a) b = Succ (add a b)
+
+fun pred Zero = panic "Nat.pred with Zero"
+and pred (Succ n) = n

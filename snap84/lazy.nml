@@ -1,0 +1,10 @@
+(* Lazy value implementation based on thunks *)
+data Lazy a = Lazy : (Unit -> a) | Eager : a
+
+fun eval v : Lazy a -> a =
+  match v with
+  | Lazy t -> t ()
+  | Eager v -> v
+
+fun apply f v : (a -> a) -> Lazy a -> a =
+  f (eval v)

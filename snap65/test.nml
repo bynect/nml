@@ -1,0 +1,11 @@
+(* Test a bunch of stuff *)
+
+let id = \x -> x
+fun twice f = \x -> f (f x)
+
+fun const x _ = x
+fun apply f x = f x
+
+fun fst t = match t with (x, _) -> x
+fun snd t = match t with (_, x) -> x
+
