@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,7 +78,8 @@ static bool infer_type_occurs(type_t *t1, type_t *t2)
     if (!infer_type_find(t2, &res))
         return false;
 
-    if (res->tag == TYPE_VAR && res == t1)
+    if (res->tag == TYPE_VAR
+        && ((type_var_t *)res)->id == ((type_var_t *)t1)->id)
         return true;
 
     if (res->tag == TYPE_CON) {
@@ -153,6 +155,50 @@ static bool infer_instantiate(infer_t *infer, type_scheme_t *scheme, type_t **ty
     return ok;
 }
 
+// FIXME: The logic is not correct for env freevars
+static void infer_collect(infer_t *infer, type_t *type, size_t *n_vars, type_id_t **vars)
+{
+    if (type->tag == TYPE_VAR) {
+        type_var_t *var = (type_var_t *)type;
+
+        for (env_t *env = infer->env; env; env = env->next) {
+            type_scheme_t *scheme = (type_scheme_t *)env->value;
+            for (size_t i = 0; i < scheme->n_vars; i++) {
+                if (var->id == scheme->vars[i])
+                    return;
+            }
+        }
+
+        for (size_t i = 0; i < *n_vars; i++) {
+            if (var->id == (*vars)[i])
+                return;
+        }
+
+        *vars = realloc(*vars, ++(*n_vars) * sizeof(type_id_t));
+        (*vars)[*n_vars - 1] = var->id;
+        return;
+    }
+
+    if (type->tag == TYPE_CON) {
+        type_con_t *con = (type_con_t *)type;
+        for (size_t i = 0; i < con->n_args; i++)
+            infer_collect(infer, con->args[i], n_vars, vars);
+    }
+}
+
+static bool infer_generalize(infer_t *infer, type_scheme_t *scheme, type_t *type)
+{
+    type_t *value;
+    if (!infer_type_resolve(type, &value))
+        return false;
+
+    size_t n_vars = 0;
+    type_id_t *vars = NULL;
+    infer_collect(infer, value, &n_vars, &vars);
+    type_scheme_init(scheme, value, n_vars, vars);
+    return true;
+}
+
 bool infer_expr(infer_t *infer, expr_t *expr)
 {
     switch (expr->tag) {
@@ -220,6 +266,7 @@ bool infer_expr(infer_t *infer, expr_t *expr)
             type_t **args = malloc(sizeof(type_t *) * 2);
             args[0] = app->arg->type;
             args[1] = expr->type;
+
             type_t *arrow = type_con_new("->", 2, args);
             return infer_type_unify(app->fun->type, arrow);
         }
@@ -234,7 +281,10 @@ bool infer_expr(infer_t *infer, expr_t *expr)
             }
 
             type_scheme_t scheme;
-            type_scheme_init(&scheme, let->value->type, 0, NULL);
+            if (!infer_generalize(infer, &scheme, let->value->type)) {
+                printf("Failed to generalize let\n");
+                return false;
+            }
 
             env_t *env = infer->env;
             infer->env = env_append(env, let->bound, (intptr_t)&scheme);
@@ -243,6 +293,7 @@ bool infer_expr(infer_t *infer, expr_t *expr)
                 return false;
             }
 
+            free(scheme.vars);
             infer->env = env_clear(infer->env, env);
             return infer_type_unify(expr->type, let->body->type);
         }

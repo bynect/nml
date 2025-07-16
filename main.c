@@ -15,28 +15,27 @@ int main(int argc, char **argv)
             expr_apply_new(
                 expr_lambda_new(
                     "x",
-                    //expr_let_new(
-                    //    "y",
+                    expr_let_new(
+                        "y",
                         expr_lambda_new(
                             "z",
                             expr_lambda_new(
                                 "k",
                                 expr_var_new("x")
                             )
-                    //    ),
-                    //    expr_var_new("y")
+                        ),
+                        expr_var_new("y")
                     )
                 ),
                 expr_lit_new(69)
             ),
             expr_lit_new(42)
         ),
-        expr_lit_new(104)
-        //expr_let_new(
-        //    "p",
-        //    expr_lit_new(104),
-        //    expr_var_new("p")
-        //)
+        expr_let_new(
+            "p",
+            expr_lit_new(104),
+            expr_var_new("p")
+        )
     );
 
     printf("Expr: ");
