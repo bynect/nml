@@ -4,7 +4,7 @@ LDFLAGS=-Wl,-O1
 INC=$(wildcard *.h)
 SRC=$(wildcard *.c)
 OBJ=$(patsubst %.c,%.o,$(SRC))
-BIN=lang
+BIN=nmlc
 
 $(BIN): $(OBJ)
 	$(CC) -o $@ $(LDFLAGS) $^

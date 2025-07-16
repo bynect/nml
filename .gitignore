@@ -3,6 +3,6 @@
 *.out
 *.bin
 *.o
-lang
 *.S
 *.asm
+nmlc
