@@ -110,7 +110,7 @@ void expr_print(expr_t *expr)
             expr_let_t *let = (expr_let_t *)expr;
             printf("let %s", let->bound);
 
-            if (let->value->type) {
+            if (let->value->type && let->scheme.type) {
                 fputs(" : ", stdout);
                 type_scheme_print(&let->scheme);
             }

@@ -2,15 +2,12 @@
 #include <stdlib.h>
 
 #include "compile.h"
+#include "decl.h"
 #include "expr.h"
 #include "infer.h"
 
 int main(int argc, char **argv)
 {
-    //expr_t *expr = expr_apply_new(expr_lambda_new("x", expr_var_new("x")), expr_lit_new(42));
-
-    //expr_t *expr = expr_lit_new(42);
-
     expr_t *expr = expr_apply_new(
         expr_apply_new(
             expr_apply_new(
@@ -39,50 +36,59 @@ int main(int argc, char **argv)
         )
     );
 
-    //expr_t *expr = expr_let_new(
-    //    "id",
-    //    expr_lambda_new(
-    //        "x",
-    //        expr_var_new("x")
-    //    ),
-    //    expr_apply_new(
-    //        expr_var_new("id"),
-    //        expr_lit_new(42)
-    //    )
-    //);
-
-    printf("Expr: ");
-    expr_println(expr);
+    decl_t *decls[] = {
+        decl_let_new("id", expr_lambda_new("x", expr_var_new("x"))),
+        decl_let_new("sus", expr_apply_new(expr_var_new("id"), expr_lit_new(10))),
+        decl_let_new("main", expr),
+        NULL
+    };
 
     infer_t infer;
     infer_init(&infer, NULL);
 
-    if (!infer_expr(&infer, expr)) {
-        puts("Failed to infer types");
-        expr_free(expr);
-        return 1;
+    for (decl_t **ptr = decls; *ptr; ptr++) {
+        decl_t *decl = *ptr;
+
+        printf("Decl: ");
+        decl_println(decl);
+
+        if (!infer_decl(&infer, decl)) {
+            puts("Failed to infer types");
+            expr_free(expr);
+            return 1;
+        }
+
+        printf("Typed: ");
+        decl_println(decl);
     }
-
-    infer_resolve(&infer, expr);
-
-    printf("Typed: ");
-    expr_println(expr);
 
     FILE *out = fopen("out.S", "wb");
     compile_t comp;
     compile_init(&comp, out);
 
-    bool ok = compile_expr(&comp, expr);
-    fclose(out);
-    expr_free(expr);
+    for (decl_t **ptr = decls; *ptr; ptr++) {
+        decl_t *decl = *ptr;
 
-    if (ok) {
-        puts("Compiling out.S");
-        if (system("gcc out.S -g") < 0)
-            perror("system");
-    } else {
-        puts("Failed to compile");
+        if (!compile_decl(&comp, decl)) {
+            fputs("Failed to compile ", stdout);
+            decl_println(decl);
+            return 1;
+        }
     }
+
+    // TODO: Fix errors
+    if (!compile_main(&comp)) {
+        printf("Failed to emit main function\n");
+        return 1;
+    }
+
+    compile_free(&comp);
+
+    fclose(out);
+    puts("Compiling out.S");
+
+    if (system("gcc out.S -g") < 0)
+        perror("system");
 
     return 0;
 }

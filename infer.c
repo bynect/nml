@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "infer.h"
+#include "decl.h"
 #include "env.h"
 #include "type.h"
 
@@ -195,14 +196,14 @@ next:;
 
 static bool infer_generalize(infer_t *infer, type_scheme_t *scheme, type_t *type)
 {
-    type_t *value;
-    if (!infer_type_resolve(type, &value))
+    type_t *res;
+    if (!infer_type_resolve(type, &res))
         return false;
 
     size_t n_vars = 0;
     type_id_t *vars = NULL;
-    infer_collect(infer, value, &n_vars, &vars);
-    type_scheme_init(scheme, value, n_vars, vars);
+    infer_collect(infer, res, &n_vars, &vars);
+    type_scheme_init(scheme, res, n_vars, vars);
     return true;
 }
 
@@ -335,6 +336,34 @@ bool infer_resolve(infer_t *infer, expr_t *expr)
             expr_let_t *let = (expr_let_t *)expr;
             return infer_resolve(infer, let->value)
                 && infer_resolve(infer, let->body);
+        }
+    }
+    return false;
+}
+
+bool infer_decl(infer_t *infer, decl_t *decl)
+{
+    switch (decl->tag) {
+        case DECL_LET: {
+            decl_let_t *let = (decl_let_t *)decl;
+
+            if (!infer_expr(infer, let->value)) {
+                printf("Failed to infer let value\n");
+                return false;
+            }
+
+            if (!infer_resolve(infer, let->value)) {
+                printf("Failed to resolve let type\n");
+                return false;
+            }
+
+            if (!infer_generalize(infer, &let->scheme, let->value->type)) {
+                printf("Failed to generalize let type\n");
+                return false;
+            }
+
+            infer->env = env_append(infer->env, let->bound, (intptr_t)&let->scheme);
+            return true;
         }
     }
     return false;
