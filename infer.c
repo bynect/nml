@@ -155,7 +155,7 @@ static bool infer_instantiate(infer_t *infer, type_scheme_t *scheme, type_t **ty
     return ok;
 }
 
-// FIXME: The logic is not correct for env freevars
+// FIXME: This is very inefficient and probably incorrect
 static void infer_collect(infer_t *infer, type_t *type, size_t *n_vars, type_id_t **vars)
 {
     if (type->tag == TYPE_VAR) {
@@ -163,10 +163,17 @@ static void infer_collect(infer_t *infer, type_t *type, size_t *n_vars, type_id_
 
         for (env_t *env = infer->env; env; env = env->next) {
             type_scheme_t *scheme = (type_scheme_t *)env->value;
+
+            // If the var is quantified, skip this scheme
             for (size_t i = 0; i < scheme->n_vars; i++) {
                 if (var->id == scheme->vars[i])
-                    return;
+                    goto next;
             }
+
+            // If the var is in the scheme's type, stop
+            if (infer_type_occurs(type, scheme->type))
+                return;
+next:;
         }
 
         for (size_t i = 0; i < *n_vars; i++) {
@@ -236,6 +243,7 @@ bool infer_expr(infer_t *infer, expr_t *expr)
 
             env_t *env = infer->env;
             infer->env = env_append(env, lam->bound, (intptr_t)&scheme);
+
             if (!infer_expr(infer, lam->body)) {
                 printf("Failed to infer lambda body\n");
                 return false;
