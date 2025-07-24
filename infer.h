@@ -9,12 +9,14 @@
 #include "env.h"
 
 typedef struct {
-    long var_id;
+    uint32_t var_id;
+    env_t *env;
     type_t *int_type;
     type_t *str_type;
     type_scheme_t ffi_extern_scheme;
+    type_id_t *ffi_extern_vars;
     type_scheme_t ffi_call_scheme;
-    env_t *env;
+    type_id_t *ffi_call_vars;
 } infer_t;
 
 void infer_init(infer_t *infer, env_t *env);

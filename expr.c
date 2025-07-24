@@ -89,7 +89,7 @@ void expr_print(expr_t *expr)
 
         case EXPR_LAMBDA: {
             expr_lambda_t *lam = (expr_lambda_t *)expr;
-            fputs(lam->bound, stdout);
+            fprintf(stdout, "\\%s", lam->bound);
 
             if (expr->type && expr->type->tag == TYPE_CON
                 && !strcmp(((type_con_t *)expr->type)->name, "->")) {

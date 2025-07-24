@@ -26,15 +26,15 @@ type_t *type_con_new(const char *name, size_t n_args, type_t **args)
 
 type_t *type_con_new_v(const char *name, size_t n_args, ...)
 {
-	va_list vargs;
-	va_start(vargs, n_args);
+    va_list vargs;
+    va_start(vargs, n_args);
 
-	type_t **args = calloc(n_args, sizeof(type_t *));
-	for (size_t i = 0; i < n_args; i++)
-		args[i] = va_arg(vargs, type_t *);
+    type_t **args = calloc(n_args, sizeof(type_t *));
+    for (size_t i = 0; i < n_args; i++)
+        args[i] = va_arg(vargs, type_t *);
 
-	va_end(vargs);
-	return type_con_new(name, n_args, args);
+    va_end(vargs);
+    return type_con_new(name, n_args, args);
 }
 
 void type_print(type_t *type)
@@ -51,14 +51,15 @@ void type_print(type_t *type)
             bool infix = !strcmp(con->name, "->");
 
             if (!infix)
-                fputs(con->name, stdout);
+                fprintf(stdout, "%s ", con->name);
 
             if (con->n_args > 0) {
 
                 for (size_t i = 0; i < con->n_args; i++) {
                     bool paren = con->args[i]->tag != TYPE_VAR &&
                         !(con->args[i]->tag == TYPE_CON &&
-                        ((type_con_t *)con->args[i])->n_args == 0);
+                        (((type_con_t *)con->args[i])->n_args == 0
+                        || !strcmp(((type_con_t *)con->args[i])->name, "->")));
 
                     if (paren) putc('(', stdout);
                     type_print(con->args[i]);

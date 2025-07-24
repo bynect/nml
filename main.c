@@ -38,6 +38,11 @@ int main(int argc, char **argv)
 
     decl_t *decls[] = {
         decl_let_new("id", expr_lambda_new("x", expr_var_new("x"))),
+        decl_let_new("xx",
+                     expr_lambda_new("x",
+                        expr_lambda_new("y",
+                            expr_lambda_new("z",
+                                     expr_var_new("x"))))),
         decl_let_new("sus", expr_apply_new(expr_var_new("id"), expr_lit_new_int(10))),
         decl_let_new("main", expr),
         NULL

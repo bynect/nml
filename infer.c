@@ -20,7 +20,35 @@ void infer_init(infer_t *infer, env_t *env)
     infer->var_id = 0;
     infer->int_type = type_con_new("Int", 0, NULL);
     infer->str_type = type_con_new("Str", 0, NULL);
-	infer->env = env;
+    infer->env = env;
+
+    // ffi_extern : forall a. Str -> Ffi a
+    {
+        type_t *ffi_var = infer_freshvar(infer);
+        type_t *ffi_con = type_con_new_v("Ffi", 1, ffi_var);
+        type_t *arrow = type_con_new_v("->", 2, infer->str_type, ffi_con);
+
+        infer->ffi_extern_vars = malloc(sizeof(type_id_t));
+        infer->ffi_extern_vars[0] = ((type_var_t *)ffi_var)->id;
+
+        type_scheme_init(&infer->ffi_extern_scheme, arrow, 1, infer->ffi_extern_vars);
+        infer->env = env_append(infer->env, "ffi_extern", (intptr_t)&infer->ffi_extern_scheme);
+    }
+
+    // ffi_call : forall a b. Ffi (a -> b) -> a -> b
+    {
+        type_t *ffi_arg = infer_freshvar(infer);
+        type_t *ffi_var = infer_freshvar(infer);
+        type_t *ffi_con = type_con_new_v("Ffi", 1, type_con_new_v("->", 2, ffi_arg, ffi_var));
+        type_t *arrow = type_con_new_v("->", 2, ffi_con, type_con_new_v("->", 2, ffi_arg, ffi_var));
+
+        infer->ffi_call_vars = malloc(2 * sizeof(type_id_t));
+        infer->ffi_call_vars[0] = ((type_var_t *)ffi_arg)->id;
+        infer->ffi_call_vars[1] = ((type_var_t *)ffi_var)->id;
+
+        type_scheme_init(&infer->ffi_call_scheme, arrow, 2, infer->ffi_call_vars);
+        infer->env = env_append(infer->env, "ffi_call", (intptr_t)&infer->ffi_call_scheme);
+    }
 }
 
 static bool infer_type_find(type_t *type, type_t **resolve)
@@ -213,9 +241,9 @@ bool infer_expr(infer_t *infer, expr_t *expr)
     switch (expr->tag) {
         case EXPR_LIT: {
             expr_lit_t *lit = (expr_lit_t *)expr;
-			expr->type = lit->is_str ? infer->str_type : infer->int_type;
+            expr->type = lit->is_str ? infer->str_type : infer->int_type;
             return true;
-		}
+        }
 
         case EXPR_VAR: {
             expr_var_t *var = (expr_var_t *)expr;
