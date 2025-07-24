@@ -40,6 +40,8 @@ type_t *type_var_new(type_id_t id);
 
 type_t *type_con_new(const char *name, size_t n_args, type_t **args);
 
+type_t *type_con_new_v(const char *name, size_t n_args, ...);
+
 void type_print(type_t *type);
 
 void type_println(type_t *type);

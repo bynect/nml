@@ -18,7 +18,11 @@ typedef struct {
 
 typedef struct {
     expr_t base;
-    int64_t value;
+    bool is_str;
+    union {
+        int64_t intv;
+        const char *strv;
+    };
 } expr_lit_t;
 
 typedef struct {
@@ -48,7 +52,9 @@ typedef struct {
     type_scheme_t scheme;
 } expr_let_t;
 
-expr_t *expr_lit_new(int64_t value);
+expr_t *expr_lit_new_int(int64_t intv);
+
+expr_t *expr_lit_new_str(const char *strv);
 
 expr_t *expr_var_new(const char *name);
 

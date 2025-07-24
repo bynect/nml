@@ -10,16 +10,17 @@
 #include "env.h"
 #include "type.h"
 
-void infer_init(infer_t *infer, env_t *env)
-{
-    infer->var_id = 0;
-    infer->int_type = type_con_new("int", 0, NULL);
-    infer->env = env;
-}
-
 static type_t *infer_freshvar(infer_t *infer)
 {
     return type_var_new(infer->var_id++);
+}
+
+void infer_init(infer_t *infer, env_t *env)
+{
+    infer->var_id = 0;
+    infer->int_type = type_con_new("Int", 0, NULL);
+    infer->str_type = type_con_new("Str", 0, NULL);
+	infer->env = env;
 }
 
 static bool infer_type_find(type_t *type, type_t **resolve)
@@ -210,9 +211,11 @@ static bool infer_generalize(infer_t *infer, type_scheme_t *scheme, type_t *type
 bool infer_expr(infer_t *infer, expr_t *expr)
 {
     switch (expr->tag) {
-        case EXPR_LIT:
-            expr->type = infer->int_type;
+        case EXPR_LIT: {
+            expr_lit_t *lit = (expr_lit_t *)expr;
+			expr->type = lit->is_str ? infer->str_type : infer->int_type;
             return true;
+		}
 
         case EXPR_VAR: {
             expr_var_t *var = (expr_var_t *)expr;

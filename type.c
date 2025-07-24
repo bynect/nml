@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include "type.h"
 
@@ -21,6 +22,19 @@ type_t *type_con_new(const char *name, size_t n_args, type_t **args)
     type->n_args = n_args;
     type->args = args;
     return (type_t *)type;
+}
+
+type_t *type_con_new_v(const char *name, size_t n_args, ...)
+{
+	va_list vargs;
+	va_start(vargs, n_args);
+
+	type_t **args = calloc(n_args, sizeof(type_t *));
+	for (size_t i = 0; i < n_args; i++)
+		args[i] = va_arg(vargs, type_t *);
+
+	va_end(vargs);
+	return type_con_new(name, n_args, args);
 }
 
 void type_print(type_t *type)

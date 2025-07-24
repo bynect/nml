@@ -27,6 +27,8 @@ void compile_init(compile_t *comp, FILE *file)
     comp->let_n = 0;
     comp->env = NULL;
     comp->main = NULL;
+    comp->n_strings = 0;
+    comp->strings = NULL;
 }
 
 static bool compile_emit_expr(compile_t *comp, expr_t *expr);
@@ -198,7 +200,13 @@ static bool compile_emit_lambda(compile_t *comp, expr_lambda_t *lam)
 
 static bool compile_emit_lit(compile_t *comp, expr_lit_t *lit)
 {
-    fprintf(comp->file, "\tmovq $%ld, %%r12\n", lit->value);
+    if (lit->is_str) {
+        comp->strings = realloc(comp->strings, ++comp->n_strings * sizeof(char *));
+        comp->strings[comp->n_strings - 1] = lit->strv;
+        fprintf(comp->file, "\tmovq str_%zu(%%rip), %%r12\n", comp->n_strings - 1);
+    } else {
+        fprintf(comp->file, "\tmovq $%ld, %%r12\n", lit->intv);
+    }
     return true;
 }
 
@@ -376,6 +384,16 @@ bool compile_main(compile_t *comp)
 
     for (uint32_t i = 0; i < comp->init_id; i++) {
         fprintf(comp->file, "glob_%u: .skip 8\n", i);
+    }
+
+    fputs("\n"
+          ".section .rodata\n"
+          ".align 8\n",
+          comp->file);
+
+    for (size_t i = 0; i < comp->n_strings; i++) {
+        fprintf(comp->file, "str_%zu: .asciz \"%s\\0\"\n",
+                i, comp->strings[i]);
     }
 
     return true;

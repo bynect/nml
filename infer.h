@@ -11,6 +11,9 @@
 typedef struct {
     long var_id;
     type_t *int_type;
+    type_t *str_type;
+    type_scheme_t ffi_extern_scheme;
+    type_scheme_t ffi_call_scheme;
     env_t *env;
 } infer_t;
 

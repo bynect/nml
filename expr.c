@@ -7,11 +7,20 @@
 #include "env.h"
 #include "type.h"
 
-expr_t *expr_lit_new(int64_t value)
+expr_t *expr_lit_new_int(int64_t intv)
 {
     expr_lit_t *expr = calloc(1, sizeof(expr_lit_t));
     expr->base.tag = EXPR_LIT;
-    expr->value = value;
+    expr->intv = intv;
+    return (expr_t *)expr;
+}
+
+expr_t *expr_lit_new_str(const char *strv)
+{
+    expr_lit_t *expr = calloc(1, sizeof(expr_lit_t));
+    expr->base.tag = EXPR_LIT;
+    expr->is_str = true;
+    expr->strv = strv;
     return (expr_t *)expr;
 }
 
@@ -65,7 +74,10 @@ void expr_print(expr_t *expr)
     switch (expr->tag) {
         case EXPR_LIT: {
             expr_lit_t *lit = (expr_lit_t *)expr;
-            printf("%ld", lit->value);
+            if (lit->is_str)
+                printf("\"%s\"", lit->strv);
+            else
+                printf("%ld", lit->intv);
             break;
         }
 

@@ -25,20 +25,20 @@ int main(int argc, char **argv)
                         expr_var_new("y")
                     )
                 ),
-                expr_lit_new(69)
+                expr_lit_new_int(69)
             ),
-            expr_lit_new(42)
+            expr_lit_new_int(42)
         ),
         expr_let_new(
             "p",
-            expr_lit_new(104),
+            expr_lit_new_str("hello"),
             expr_var_new("p")
         )
     );
 
     decl_t *decls[] = {
         decl_let_new("id", expr_lambda_new("x", expr_var_new("x"))),
-        decl_let_new("sus", expr_apply_new(expr_var_new("id"), expr_lit_new(10))),
+        decl_let_new("sus", expr_apply_new(expr_var_new("id"), expr_lit_new_int(10))),
         decl_let_new("main", expr),
         NULL
     };
