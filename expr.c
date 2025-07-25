@@ -15,7 +15,7 @@ expr_t *expr_lit_new_int(int64_t intv)
     return (expr_t *)expr;
 }
 
-expr_t *expr_lit_new_str(const char *strv)
+expr_t *expr_lit_new_str(char *strv)
 {
     expr_lit_t *expr = calloc(1, sizeof(expr_lit_t));
     expr->base.tag = EXPR_LIT;
@@ -24,7 +24,7 @@ expr_t *expr_lit_new_str(const char *strv)
     return (expr_t *)expr;
 }
 
-expr_t *expr_var_new(const char *name)
+expr_t *expr_var_new(char *name)
 {
     expr_var_t *expr = calloc(1, sizeof(expr_var_t));
     expr->base.tag = EXPR_VAR;
@@ -32,7 +32,7 @@ expr_t *expr_var_new(const char *name)
     return (expr_t *)expr;
 }
 
-expr_t *expr_lambda_new(const char *bound, expr_t *body)
+expr_t *expr_lambda_new(char *bound, expr_t *body)
 {
     expr_lambda_t *expr = calloc(1, sizeof(expr_lambda_t));
     expr->base.tag = EXPR_LAMBDA;
@@ -50,7 +50,7 @@ expr_t *expr_apply_new(expr_t *fun, expr_t *arg)
     return (expr_t *)expr;
 }
 
-expr_t *expr_let_new(const char *bound, expr_t *value, expr_t *body)
+expr_t *expr_let_new(char *bound, expr_t *value, expr_t *body)
 {
     expr_let_t *expr = calloc(1, sizeof(expr_let_t));
     expr->base.tag = EXPR_LET;
@@ -146,12 +146,22 @@ void expr_println(expr_t *expr)
 void expr_free(expr_t *expr)
 {
     switch (expr->tag) {
-        case EXPR_LIT:
-        case EXPR_VAR:
+        case EXPR_LIT: {
+            expr_lit_t *lit = (expr_lit_t *)expr;
+            if (lit->is_str)
+                free(lit->strv);
             break;
+        }
+
+        case EXPR_VAR: {
+            expr_var_t *var = (expr_var_t *)expr;
+            free(var->name);
+            break;
+        }
 
         case EXPR_LAMBDA: {
             expr_lambda_t *lam = (expr_lambda_t *)expr;
+            free(lam->bound);
             expr_free(lam->body);
             free(lam->id);
             env_clear(lam->freevars, NULL);
@@ -167,6 +177,7 @@ void expr_free(expr_t *expr)
 
         case EXPR_LET: {
             expr_let_t *let = (expr_let_t *)expr;
+            free(let->bound);
             expr_free(let->value);
             expr_free(let->body);
             break;

@@ -21,18 +21,18 @@ typedef struct {
     bool is_str;
     union {
         int64_t intv;
-        const char *strv;
+        char *strv;
     };
 } expr_lit_t;
 
 typedef struct {
     expr_t base;
-    const char *name;
+    char *name;
 } expr_var_t;
 
 typedef struct {
     expr_t base;
-    const char *bound;
+    char *bound;
     expr_t *body;
     char *id;
     struct env *freevars;
@@ -46,7 +46,7 @@ typedef struct {
 
 typedef struct {
     expr_t base;
-    const char *bound;
+    char *bound;
     expr_t *value;
     expr_t *body;
     type_scheme_t scheme;
@@ -54,15 +54,15 @@ typedef struct {
 
 expr_t *expr_lit_new_int(int64_t intv);
 
-expr_t *expr_lit_new_str(const char *strv);
+expr_t *expr_lit_new_str(char *strv);
 
-expr_t *expr_var_new(const char *name);
+expr_t *expr_var_new(char *name);
 
-expr_t *expr_lambda_new(const char *bound, expr_t *body);
+expr_t *expr_lambda_new(char *bound, expr_t *body);
 
 expr_t *expr_apply_new(expr_t *fun, expr_t *arg);
 
-expr_t *expr_let_new(const char *bound, expr_t *value, expr_t *body);
+expr_t *expr_let_new(char *bound, expr_t *value, expr_t *body);
 
 expr_t *expr_annotate(expr_t *expr, type_t *type);
 

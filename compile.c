@@ -133,7 +133,7 @@ static bool compile_emit_lambda(compile_t *comp, expr_lambda_t *lam)
 
         for (env_t *env = lam->freevars; env; env = env->next) {
             expr_var_t var = { 0 };
-            var.name = env->name;
+            var.name = strdup(env->name);
 
             if (!compile_emit_var(comp, &var))
                 return false;

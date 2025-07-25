@@ -36,8 +36,11 @@ void decl_println(decl_t *decl)
 
 void decl_free(decl_t *decl)
 {
-    if (decl->tag == DECL_LET)
-        expr_free(((decl_let_t *)decl)->value);
+    if (decl->tag == DECL_LET) {
+        decl_let_t *let = (decl_let_t *)decl;
+        expr_free(let->value);
+        free(let->bound);
+    }
 
     free(decl);
 }
