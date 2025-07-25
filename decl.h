@@ -16,12 +16,12 @@ typedef struct {
 typedef struct {
     decl_t base;
     type_scheme_t scheme;
-    const char *bound;
+    char *bound;
     expr_t *value;
     uint32_t id;
 } decl_let_t;
 
-decl_t *decl_let_new(const char *bound, expr_t *value);
+decl_t *decl_let_new(char *bound, expr_t *value);
 
 void decl_print(decl_t *decl);
 

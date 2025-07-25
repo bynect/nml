@@ -51,7 +51,7 @@ static void lex_skip(lex_t *lex)
     }
 }
 
-static bool lex_ident(lex_t *lex, token_t *next)
+static void lex_ident(lex_t *lex, token_t *next)
 {
     char c;
     do {
@@ -60,16 +60,13 @@ static bool lex_ident(lex_t *lex, token_t *next)
     } while (isalnum(c) || c == '_');
 
     lex_token(lex, next, TOK_IDENT);
-
     if (!strncmp("let", next->str, 3))
         next->type = TOK_LET;
     else if (!strncmp("in", next->str, 2))
         next->type = TOK_IN;
-
-    return true;
 }
 
-static bool lex_number(lex_t *lex, token_t *next)
+static void lex_number(lex_t *lex, token_t *next)
 {
     char c;
     do {
@@ -78,10 +75,9 @@ static bool lex_number(lex_t *lex, token_t *next)
     } while (isdigit(c));
 
     lex_token(lex, next, TOK_NUMBER);
-    return true;
 }
 
-static bool lex_string(lex_t *lex, token_t *next)
+static void lex_string(lex_t *lex, token_t *next)
 {
     char c;
     do {
@@ -91,23 +87,23 @@ static bool lex_string(lex_t *lex, token_t *next)
 
     if (lex_eof(lex)) {
         lex_error(lex, next, "Unterminated string");
-        return true;
+        return;
     }
 
     lex->off++;
     lex_token(lex, next, TOK_STRING);
-    return true;
 }
 
-bool lex_next(lex_t *lex, token_t *next)
+void lex_next(lex_t *lex, token_t *next)
 {
     lex_skip(lex);
 
     lex->tok_off = lex->off;
     lex->tok_line = lex->line;
 
-    if (lex_eof(lex))
-        return false;
+    if (lex_eof(lex)) {
+        return lex_token(lex, next, TOK_EOF);
+    }
 
     char c = lex_peek(lex);
     if (isalpha(c) || c == '_')
@@ -172,15 +168,14 @@ bool lex_next(lex_t *lex, token_t *next)
             // fall through
 
         default:
-            lex_error(lex, next, "Unknown character");
-            return true;
+            return lex_error(lex, next, "Unknown character");
     }
 
     lex_token(lex, next, type);
-    return true;
 }
 
 const char *tokens[TOK_ERROR + 1] = {
+    "TOK_EOF",
     "TOK_IDENT",
     "TOK_NUMBER",
     "TOK_STRING",

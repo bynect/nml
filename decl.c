@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-decl_t *decl_let_new(const char *bound, expr_t *value)
+decl_t *decl_let_new(char *bound, expr_t *value)
 {
     decl_let_t *decl = calloc(1, sizeof(decl_let_t));
     decl->base.tag = DECL_LET;

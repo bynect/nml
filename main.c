@@ -9,7 +9,7 @@
 #include "decl.h"
 #include "expr.h"
 #include "infer.h"
-#include "lex.h"
+#include "parse.h"
 
 int test_file(const char *path)
 {
@@ -34,12 +34,18 @@ int test_file(const char *path)
         return 1;
     }
 
-    lex_t lex;
-    lex_init(&lex, mapped, size);
+    parse_t parse;
+    parse_init(&parse, mapped, size);
 
-    token_t tok;
-    while (lex_next(&lex, &tok)) {
-        printf("%s:%u: %.*s [%s]\n", path, tok.line, (int)tok.len, tok.str, tokens[tok.type]);
+    decl_t *decl;
+    while (!parse_eof(&parse)) {
+        if (!parse_decl(&parse, &decl)) {
+            break;
+        }
+
+        puts("Parsed decl:");
+        decl_println(decl);
+        decl_free(decl);
     }
 
     munmap(mapped, size);

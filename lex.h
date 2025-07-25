@@ -6,6 +6,7 @@
 #include <stdbool.h>
 
 typedef enum {
+    TOK_EOF,
     TOK_IDENT,
     TOK_NUMBER,
     TOK_STRING,
@@ -43,7 +44,7 @@ typedef struct {
 
 void lex_init(lex_t *lex, const char *src, size_t len);
 
-bool lex_next(lex_t *lex, token_t *next);
+void lex_next(lex_t *lex, token_t *next);
 
 extern const char *tokens[TOK_ERROR + 1];
 
