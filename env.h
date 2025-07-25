@@ -22,6 +22,8 @@ size_t env_length(env_t *env);
 
 void env_print(env_t *env);
 
+void env_println(env_t *env);
+
 env_t *env_clear(env_t *head, env_t *until);
 
 #endif

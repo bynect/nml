@@ -6,8 +6,6 @@ let y = id x;
 
 let puts = ffi_extern "puts";
 
-let print = \s ->
-    let puts = ffi_extern "puts" in
-        ffi_call puts s;
+let print = \s -> ffi_call puts s;
 
 let main = print "hello world";

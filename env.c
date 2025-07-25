@@ -69,6 +69,11 @@ void env_print(env_t *env)
                env->value,
                env->next ? ", " : "");
     }
+}
+
+void env_println(env_t *env)
+{
+    env_print(env);
     puts("");
 }
 

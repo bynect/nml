@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -7,13 +8,24 @@
 
 #include "compile.h"
 #include "decl.h"
-#include "expr.h"
 #include "infer.h"
 #include "parse.h"
 
-int test_file(const char *path)
+int main(int argc, const char **argv)
 {
-    int fd = open(path, O_RDONLY);
+    bool debug = false;
+    if (argc == 3 && !strcmp(argv[1], "--debug")) {
+        argc--;
+        argv[1] = argv[2];
+        debug = true;
+    }
+
+    if (argc != 2) {
+        printf("Usage: %s [--debug] PATH\n", argv[0]);
+        return 1;
+    }
+
+    int fd = open(argv[1], O_RDONLY);
     if (fd < 0) {
         perror("open");
         return 1;
@@ -37,95 +49,48 @@ int test_file(const char *path)
     parse_t parse;
     parse_init(&parse, mapped, size);
 
+    decl_t **decls = NULL;
+    size_t n_decls = 0;
+
     decl_t *decl;
     while (!parse_eof(&parse)) {
         if (!parse_decl(&parse, &decl)) {
-            break;
+            printf("Aborted parsing\n");
+            exit(1);
         }
 
-        puts("Parsed decl:");
-        decl_println(decl);
-        decl_free(decl);
+        if (debug) {
+            printf("Parsed decl: ");
+            decl_println(decl);
+        }
+
+        decls = realloc(decls, ++n_decls * sizeof(decl_t *));
+        decls[n_decls - 1] = decl;
     }
-
-    munmap(mapped, size);
-    return 0;
-}
-
-int main(int argc, const char **argv)
-{
-    if (argc == 2) {
-        return test_file(argv[1]);
-    }
-
-    expr_t *expr = expr_apply_new(
-        expr_apply_new(
-            expr_apply_new(
-                expr_lambda_new(
-                    "x",
-                    expr_let_new(
-                        "y",
-                        expr_lambda_new(
-                            "z",
-                            expr_lambda_new(
-                                "k",
-                                expr_var_new("x")
-                            )
-                        ),
-                        expr_var_new("y")
-                    )
-                ),
-                expr_lit_new_str("helloworld")
-            ),
-            expr_lit_new_int(42)
-        ),
-        expr_let_new(
-            "p",
-            expr_lit_new_str("hello"),
-            expr_var_new("p")
-        )
-    );
-
-    expr_t *print = expr_apply_new(
-        expr_apply_new(
-            expr_var_new("ffi_call"),
-            expr_var_new("puts")
-        ),
-        expr
-    );
-
-    decl_t *decls[] = {
-        decl_let_new("id", expr_lambda_new("x", expr_var_new("x"))),
-        decl_let_new("puts", expr_apply_new(expr_var_new("ffi_extern"), expr_lit_new_str("puts"))),
-        decl_let_new("main", print),
-        NULL
-    };
 
     infer_t infer;
     infer_init(&infer, NULL);
 
-    for (decl_t **ptr = decls; *ptr; ptr++) {
-        decl_t *decl = *ptr;
-
-        printf("Decl: ");
-        decl_println(decl);
+    for (size_t i = 0; i < n_decls; i++) {
+        decl_t *decl = decls[i];
 
         if (!infer_decl(&infer, decl)) {
             puts("Failed to infer types");
-            expr_free(expr);
             return 1;
         }
 
-        printf("Typed: ");
-        decl_println(decl);
+        if (debug) {
+            printf("Typed decl: ");
+            decl_println(decl);
+        }
     }
 
     FILE *out = fopen("out.S", "wb");
     compile_t comp;
     compile_init(&comp, out);
 
-    for (decl_t **ptr = decls; *ptr; ptr++) {
-        decl_t *decl = *ptr;
+    for (size_t i = 0; i < n_decls; i++) {
+        decl_t *decl = decls[i];
 
         if (!compile_decl(&comp, decl)) {
             fputs("Failed to compile ", stdout);
@@ -141,12 +106,17 @@ int main(int argc, const char **argv)
     }
 
     compile_free(&comp);
-
     fclose(out);
+
+    for (size_t i = 0; i < n_decls; i++)
+        decl_free(decls[i]);
+
     puts("Compiling out.S");
 
     if (system("gcc out.S -g -fpie") < 0)
         perror("system");
 
+    munmap(mapped, size);
+    close(fd);
     return 0;
 }

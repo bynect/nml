@@ -161,6 +161,9 @@ static bool compile_emit_lambda(compile_t *comp, expr_lambda_t *lam)
         return false;
     }
 
+    // TODO: Add a list of ignored values
+    freevars = env_remove(freevars, "ffi_call");
+
     size_t let_n = comp->let_n;
     comp->let_n = 0;
 
@@ -278,6 +281,7 @@ static bool compile_emit_let(compile_t *comp, expr_let_t *let)
         return false;
 
     comp->env = env_clear(comp->env, env);
+    comp->env = env;
     comp->let_n--;
     return true;
 }
