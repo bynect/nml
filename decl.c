@@ -24,6 +24,7 @@ void decl_print(decl_t *decl)
 
         fputs(" = ", stdout);
         expr_print(let->value);
+        putc(';', stdout);
     }
 }
 

@@ -1,6 +1,8 @@
+let x = 1;
+
 let id = \x -> x;
 
-let x = id 1;
+let y = id x;
 
 let puts = ffi_extern "puts";
 
