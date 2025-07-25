@@ -25,7 +25,7 @@ int main(int argc, char **argv)
                         expr_var_new("y")
                     )
                 ),
-                expr_lit_new_int(69)
+                expr_lit_new_str("helloworld")
             ),
             expr_lit_new_int(42)
         ),
@@ -36,15 +36,18 @@ int main(int argc, char **argv)
         )
     );
 
+    expr_t *print = expr_apply_new(
+        expr_apply_new(
+            expr_var_new("ffi_call"),
+            expr_var_new("puts")
+        ),
+        expr
+    );
+
     decl_t *decls[] = {
         decl_let_new("id", expr_lambda_new("x", expr_var_new("x"))),
-        decl_let_new("xx",
-                     expr_lambda_new("x",
-                        expr_lambda_new("y",
-                            expr_lambda_new("z",
-                                     expr_var_new("x"))))),
-        decl_let_new("sus", expr_apply_new(expr_var_new("id"), expr_lit_new_int(10))),
-        decl_let_new("main", expr),
+        decl_let_new("puts", expr_apply_new(expr_var_new("ffi_extern"), expr_lit_new_str("puts"))),
+        decl_let_new("main", print),
         NULL
     };
 
@@ -92,7 +95,7 @@ int main(int argc, char **argv)
     fclose(out);
     puts("Compiling out.S");
 
-    if (system("gcc out.S -g") < 0)
+    if (system("gcc out.S -g -fpie") < 0)
         perror("system");
 
     return 0;

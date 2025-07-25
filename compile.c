@@ -7,6 +7,7 @@
 #include "compile.h"
 #include "decl.h"
 #include "env.h"
+#include "expr.h"
 
 typedef enum {
     OFF_ARG,
@@ -51,22 +52,19 @@ static bool compile_emit_var(compile_t *comp, expr_var_t *var)
         case OFF_LET:
             fprintf(comp->file,
                     "\tmovq -%lu(%%rbp), %%r12\t\t#let %s\n",
-                    OFF_CLS(offset),
-                    var->name);
+                    OFF_CLS(offset), var->name);
             break;
 
         case OFF_FV:
             fprintf(comp->file,
                     "\tmovq %lu(%%r13), %%r12\t\t#fv %s\n",
-                    OFF_CLS(offset),
-                    var->name);
+                    OFF_CLS(offset), var->name);
             break;
 
         case OFF_GLOB:
             fprintf(comp->file,
                     "\tmovq glob_%lu(%%rip), %%r12\t\t#glob %s\n",
-                    OFF_CLS(offset),
-                    var->name);
+                    OFF_CLS(offset), var->name);
             break;
 
         default:
@@ -203,7 +201,7 @@ static bool compile_emit_lit(compile_t *comp, expr_lit_t *lit)
     if (lit->is_str) {
         comp->strings = realloc(comp->strings, ++comp->n_strings * sizeof(char *));
         comp->strings[comp->n_strings - 1] = lit->strv;
-        fprintf(comp->file, "\tmovq str_%zu(%%rip), %%r12\n", comp->n_strings - 1);
+        fprintf(comp->file, "\tleaq str_%zu(%%rip), %%r12\n", comp->n_strings - 1);
     } else {
         fprintf(comp->file, "\tmovq $%ld, %%r12\n", lit->intv);
     }
@@ -212,18 +210,57 @@ static bool compile_emit_lit(compile_t *comp, expr_lit_t *lit)
 
 static bool compile_emit_apply(compile_t *comp, expr_apply_t *app)
 {
-    if (!compile_emit_expr(comp, app->fun))
-        return false;
+    bool ffi_call = false;
+    if (app->fun->tag == EXPR_VAR) {
+        expr_var_t *var = (expr_var_t *)app->fun;
 
-    fputs("\tpushq %r12\n", comp->file);
+        if (!strcmp(var->name, "ffi_extern") &&
+            env_find(comp->env, "ffi_extern", NULL) < 0) {
+            if (app->arg->tag == EXPR_LIT) {
+                expr_lit_t *lit = (expr_lit_t *)app->arg;
+                if (!lit->is_str) {
+                    printf("Expected known string for ffi_extern\n");
+                    return false;
+                }
+
+                fprintf(comp->file,
+                        "\t.extern %s\n"
+                        "\tleaq %s@GOTPCREL(%%rip), %%r12\n",
+                        lit->strv,
+                        lit->strv);
+                return true;
+            }
+        }
+
+        ffi_call = !strcmp(var->name, "ffi_call")
+            && env_find(comp->env, "ffi_call", NULL) < 0;
+    }
+
+    if (!ffi_call) {
+        if (!compile_emit_expr(comp, app->fun))
+            return false;
+        fputs("\tpushq %r12\n", comp->file);
+    }
+
     if (!compile_emit_expr(comp, app->arg))
         return false;
 
-    fputs("\tmovq %r12, %r14\n"
-          "\tpopq %r13\n"
-          "\tcall *(%r13)\n"
-          "\n",
-          comp->file);
+    if (ffi_call) {
+        fprintf(comp->file,
+                "\tmovq $16, %%rdi\n"
+                "\tcall malloc\n"
+                "\tmovq %%rax, %%r15\n"
+                "\tleaq ffi_call(%%rip), %%rax\n"
+                "\tmovq %%rax, (%%r15)\n"
+                "\tmovq %%r12, 8(%%r15)\n"
+                "\tmovq %%r15, %%r12\n\n");
+    } else {
+        fputs("\tmovq %r12, %r14\n"
+              "\tpopq %r13\n"
+              "\tcall *(%r13)\n"
+              "\n",
+              comp->file);
+    }
 
     return true;
 }
@@ -344,7 +381,8 @@ bool compile_main(compile_t *comp)
     if (comp->main == NULL)
         return false;
 
-    fputs(".globl main\n"
+    fputs(".extern malloc\n"
+          ".globl main\n"
           "main:\n"
           "\tpushq %rbp\n"
           "\tmovq %rsp, %rbp\n"
@@ -361,20 +399,19 @@ bool compile_main(compile_t *comp)
 
     fprintf(comp->file, "\tcall init_%u\t\t#main\n", comp->main->id);
 
-    fputs("\tmovq %r12, %rsi\n"
-          "\tleaq fmt(%rip), %rdi\n"
-          "\tcall printf\n"
-          "\tpopq %r15\n"
+    fputs("\tpopq %r15\n"
           "\tpopq %r14\n"
           "\tpopq %r13\n"
           "\tpopq %r12\n"
           "\tleave\n"
           "\tret\n"
           "\n"
-          ".extern malloc\n"
-          "\n"
-          ".section .rodata\n"
-          "fmt: .asciz \"Result: %ld\\n\"\n"
+          "ffi_call:\n"
+          "\tmovq 8(%r13), %rax\n"
+          "\tmovq %r14, %rdi\n"
+          "\tcall *(%rax)\n"
+          "\tmovq %rax, %r12\n"
+          "\tret\n"
           "\n"
           ".section .note.GNU-stack,\"\",@progbits\n"
           "\n"

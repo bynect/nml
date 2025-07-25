@@ -44,7 +44,8 @@ ssize_t env_find(env_t *env, const char *name, intptr_t *value)
     size_t i = 0;
     for ( ; env; env = env->next) {
         if (!strcmp(name, env->name)) {
-            *value = env->value;
+            if (value)
+                *value = env->value;
             return i;
         }
         i++;
