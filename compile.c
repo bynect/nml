@@ -403,6 +403,7 @@ bool compile_main(compile_t *comp)
           "\tpopq %r14\n"
           "\tpopq %r13\n"
           "\tpopq %r12\n"
+          "\txorq %rax, %rax\n"
           "\tleave\n"
           "\tret\n"
           "\n"

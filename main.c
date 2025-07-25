@@ -1,13 +1,57 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "compile.h"
 #include "decl.h"
 #include "expr.h"
 #include "infer.h"
+#include "lex.h"
 
-int main(int argc, char **argv)
+int test_file(const char *path)
 {
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        perror("open");
+        return 1;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) < 0) {
+        perror("fstat");
+        close(fd);
+        return 1;
+    }
+
+    size_t size = st.st_size;
+    void *mapped = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (mapped == MAP_FAILED) {
+        perror("mmap");
+        close(fd);
+        return 1;
+    }
+
+    lex_t lex;
+    lex_init(&lex, mapped, size);
+
+    token_t tok;
+    while (lex_next(&lex, &tok)) {
+        printf("%s:%u: %.*s [%s]\n", path, tok.line, (int)tok.len, tok.str, tokens[tok.type]);
+    }
+
+    munmap(mapped, size);
+    return 0;
+}
+
+int main(int argc, const char **argv)
+{
+    if (argc == 2) {
+        return test_file(argv[1]);
+    }
+
     expr_t *expr = expr_apply_new(
         expr_apply_new(
             expr_apply_new(

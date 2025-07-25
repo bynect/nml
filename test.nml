@@ -1,0 +1,11 @@
+let id = \x -> x;
+
+let x = id 1;
+
+let puts = ffi_extern "puts";
+
+let print = \s ->
+    let puts = ffi_extern "puts" in
+        ffi_call puts s;
+
+let main = print "hello world";

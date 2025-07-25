@@ -7,7 +7,6 @@
 #include <stdio.h>
 
 #include "decl.h"
-#include "expr.h"
 #include "env.h"
 
 typedef struct {
@@ -17,8 +16,8 @@ typedef struct {
     long let_n;
     env_t *env;
     decl_let_t *main;
-	size_t n_strings;
-	const char **strings;
+    size_t n_strings;
+    const char **strings;
 } compile_t;
 
 void compile_init(compile_t *comp, FILE *file);

@@ -1,4 +1,4 @@
-CFLAGS=-O1 -g -Wall -Wextra
+CFLAGS=-O1 -g3 -Wall -Wextra
 LDFLAGS=-Wl,-O1
 
 INC=$(wildcard *.h)
