@@ -104,7 +104,7 @@ void expr_print(expr_t *expr)
 
         case EXPR_APPLY: {
             expr_apply_t *app = (expr_apply_t *)expr;
-            bool fun_paren = app->fun->tag != EXPR_LIT && app->fun->tag != EXPR_VAR;
+            bool fun_paren = app->fun->tag != EXPR_LIT && app->fun->tag != EXPR_VAR && app->fun->tag != EXPR_APPLY;
             bool arg_paren = app->arg->tag != EXPR_LIT && app->arg->tag != EXPR_VAR;
 
             if (fun_paren) putc('(', stdout);

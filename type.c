@@ -54,17 +54,16 @@ void type_print(type_t *type)
             type_con_t *con = (type_con_t *)type;
             bool infix = !strcmp(con->name, "->");
 
-            if (!infix)
-                fprintf(stdout, "%s", con->name);
+            if (!infix) fputs(con->name, stdout);
 
             if (con->n_args > 0) {
-                putc(' ', stdout);
+                if (!infix) putc(' ', stdout);
 
                 for (size_t i = 0; i < con->n_args; i++) {
                     bool paren = con->args[i]->tag != TYPE_VAR &&
                         !(con->args[i]->tag == TYPE_CON &&
                         (((type_con_t *)con->args[i])->n_args == 0
-                        || !strcmp(((type_con_t *)con->args[i])->name, "->")));
+                        || !strcmp(((type_con_t *)con->args[i])->name, "->")) && infix);
 
                     if (paren) putc('(', stdout);
                     type_print(con->args[i]);
@@ -154,7 +153,7 @@ void type_scheme_print(type_scheme_t *scheme)
         fputs("forall ", stdout);
 
         for (size_t i = 0; i < scheme->n_vars; i++) {
-            printf("'t%u ", scheme->vars[i]);
+            printf("t%u ", scheme->vars[i]);
         }
 
         fputs(". ", stdout);

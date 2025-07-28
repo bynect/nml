@@ -1,10 +1,10 @@
-let x : a = 1;
+let x : Int = 1;
 
-let id = \x -> x;
+let id : a -> b = \x -> x;
 
 let y = id x;
 
-let puts = ffi_extern "puts";
+let puts : Ffi (Str -> Int) = ffi_extern "puts";
 
 let print = \s -> ffi_call puts s;
 
