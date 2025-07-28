@@ -12,21 +12,21 @@
 
 static type_t *infer_freshvar(infer_t *infer)
 {
-    return type_var_new(infer->var_id++);
+    return type_var_new(NULL, infer->var_id++);
 }
 
 void infer_init(infer_t *infer, env_t *env)
 {
     infer->var_id = 0;
-    infer->int_type = type_con_new("Int", 0, NULL);
-    infer->str_type = type_con_new("Str", 0, NULL);
+    infer->int_type = type_con_new(strdup("Int"), 0, NULL);
+    infer->str_type = type_con_new(strdup("Str"), 0, NULL);
     infer->env = env;
 
     // ffi_extern : forall a. Str -> Ffi a
     {
         type_t *ffi_var = infer_freshvar(infer);
-        type_t *ffi_con = type_con_new_v("Ffi", 1, ffi_var);
-        type_t *arrow = type_con_new_v("->", 2, infer->str_type, ffi_con);
+        type_t *ffi_con = type_con_new_v(strdup("Ffi"), 1, ffi_var);
+        type_t *arrow = type_con_new_v(strdup("->"), 2, infer->str_type, ffi_con);
 
         infer->ffi_extern_vars = malloc(sizeof(type_id_t));
         infer->ffi_extern_vars[0] = ((type_var_t *)ffi_var)->id;
@@ -39,8 +39,10 @@ void infer_init(infer_t *infer, env_t *env)
     {
         type_t *ffi_arg = infer_freshvar(infer);
         type_t *ffi_var = infer_freshvar(infer);
-        type_t *ffi_con = type_con_new_v("Ffi", 1, type_con_new_v("->", 2, ffi_arg, ffi_var));
-        type_t *arrow = type_con_new_v("->", 2, ffi_con, type_con_new_v("->", 2, ffi_arg, ffi_var));
+        type_t *ffi_con = type_con_new_v(strdup("Ffi"), 1,
+                                         type_con_new_v(strdup("->"), 2, ffi_arg, ffi_var));
+        type_t *arrow = type_con_new_v(strdup("->"), 2, ffi_con,
+                                       type_con_new_v(strdup("->"), 2, ffi_arg, ffi_var));
 
         infer->ffi_call_vars = malloc(2 * sizeof(type_id_t));
         infer->ffi_call_vars[0] = ((type_var_t *)ffi_arg)->id;
@@ -236,13 +238,47 @@ static bool infer_generalize(infer_t *infer, type_scheme_t *scheme, type_t *type
     return true;
 }
 
+static bool infer_annotation(infer_t *infer, type_t *type, env_t **subst)
+{
+    if (type->tag == TYPE_VAR) {
+        type_var_t *var = (type_var_t *)type;
+        if (!var->name)
+            return true;
+
+        int64_t id;
+        if (env_find(*subst, var->name, &id) < 0) {
+            id = infer->var_id++;
+            *subst = env_append(*subst, var->name, id);
+        }
+
+        var->id = id;
+        return true;
+    } else if (type->tag == TYPE_CON) {
+        type_con_t *con = (type_con_t *)type;
+        for (size_t i = 0; i < con->n_args; i++) {
+            if (!infer_annotation(infer, con->args[i], subst))
+                return false;
+        }
+        return true;
+    }
+
+    printf("Unreachable\n");
+    return false;
+}
+
 bool infer_expr(infer_t *infer, expr_t *expr)
 {
+    env_t *subst = NULL;
+    type_t *annot = expr->type;
+    if (annot && !infer_annotation(infer, annot, &subst))
+        return false;
+
     switch (expr->tag) {
         case EXPR_LIT: {
             expr_lit_t *lit = (expr_lit_t *)expr;
             expr->type = lit->is_str ? infer->str_type : infer->int_type;
-            return true;
+
+            return annot ? infer_type_unify(annot, expr->type) : true;
         }
 
         case EXPR_VAR: {
@@ -261,6 +297,9 @@ bool infer_expr(infer_t *infer, expr_t *expr)
                 type_scheme_println(scheme);
                 return false;
             }
+
+            if (annot && !infer_type_unify(annot, expr->type))
+                return false;
 
             return infer_type_unify(expr->type, inst);
         }
@@ -285,6 +324,9 @@ bool infer_expr(infer_t *infer, expr_t *expr)
             args[0] = fresh;
             args[1] = lam->body->type;
 
+            if (annot && !infer_type_unify(annot, expr->type))
+                return false;
+
             infer->env = env_clear(infer->env, env);
             return infer_type_unify(expr->type, type_con_new("->", 2, args));
         }
@@ -306,6 +348,9 @@ bool infer_expr(infer_t *infer, expr_t *expr)
             type_t **args = malloc(sizeof(type_t *) * 2);
             args[0] = app->arg->type;
             args[1] = expr->type;
+
+            if (annot && !infer_type_unify(annot, expr->type))
+                return false;
 
             type_t *arrow = type_con_new("->", 2, args);
             return infer_type_unify(app->fun->type, arrow);
@@ -331,6 +376,9 @@ bool infer_expr(infer_t *infer, expr_t *expr)
                 printf("Failed to infer let body\n");
                 return false;
             }
+
+            if (annot && !infer_type_unify(annot, expr->type))
+                return false;
 
             infer->env = env_clear(infer->env, env);
             return infer_type_unify(expr->type, let->body->type);
@@ -387,6 +435,14 @@ bool infer_decl(infer_t *infer, decl_t *decl)
                 printf("Failed to resolve let type\n");
                 return false;
             }
+
+            env_t *subst = NULL;
+            type_t *annot = let->scheme.type;
+            if (annot && !infer_annotation(infer, annot, &subst))
+                return false;
+
+            if (annot && !infer_type_unify(annot, let->value->type))
+                return false;
 
             if (!infer_generalize(infer, &let->scheme, let->value->type)) {
                 printf("Failed to generalize let type\n");

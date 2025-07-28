@@ -18,13 +18,14 @@ typedef struct {
 
 typedef struct {
     type_t base;
+    char *name;
     type_id_t id;
     type_t *forward;
 } type_var_t;
 
 typedef struct {
     type_t base;
-    const char *name;
+    char *name;
     size_t n_args;
     type_t **args;
 } type_con_t;
@@ -36,11 +37,11 @@ typedef struct {
 } type_scheme_t;
 
 
-type_t *type_var_new(type_id_t id);
+type_t *type_var_new(char *name, type_id_t id);
 
-type_t *type_con_new(const char *name, size_t n_args, type_t **args);
+type_t *type_con_new(char *name, size_t n_args, type_t **args);
 
-type_t *type_con_new_v(const char *name, size_t n_args, ...);
+type_t *type_con_new_v(char *name, size_t n_args, ...);
 
 void type_print(type_t *type);
 

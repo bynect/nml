@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,7 +66,40 @@ static bool parse_expect(parse_t *parse, token_type_t type)
     return false;
 }
 
-bool parse_expr(parse_t *parse, expr_t **expr);
+static bool parse_type(parse_t *parse, type_t **type);
+
+static bool parse_type_simple(parse_t *parse, type_t **type)
+{
+    if (parse_check(parse, TOK_IDENT)) {
+        char *var = strndup(parse->next.str, parse->next.len);
+        parse_next(parse);
+
+        if (islower(var[0])) {
+            *type = type_var_new(var, 0);
+            return true;
+        }
+
+        *type = type_con_new(var, 0, NULL);
+        return true;
+    }
+
+    if (parse_match(parse, TOK_LPAR)) {
+        return parse_type(parse, type)
+            && parse_expect(parse, TOK_RPAR);
+    }
+
+    return false;
+}
+
+static bool parse_type(parse_t *parse, type_t **type)
+{
+    if (!parse_type_simple(parse, type))
+        return false;
+
+    return true;
+}
+
+static bool parse_expr(parse_t *parse, expr_t **expr);
 
 static bool parse_expr_lambda(parse_t *parse, expr_t **expr)
 {
@@ -152,7 +186,7 @@ static bool parse_expr_simple(parse_t *parse, expr_t **expr)
     return true;
 }
 
-bool parse_expr(parse_t *parse, expr_t **expr)
+static bool parse_expr(parse_t *parse, expr_t **expr)
 {
     if (parse_match(parse, TOK_BACK))
         return parse_expr_lambda(parse, expr);
@@ -173,11 +207,17 @@ bool parse_expr(parse_t *parse, expr_t **expr)
     return true;
 }
 
-bool parse_decl_let(parse_t *parse, decl_t **decl)
+static bool parse_decl_let(parse_t *parse, decl_t **decl)
 {
     token_t var = parse->next;
     if (!parse_expect(parse, TOK_IDENT))
         return false;
+
+    type_t *annot = NULL;
+    if (parse_match(parse, TOK_COL)) {
+        if (!parse_type(parse, &annot))
+            return false;
+    }
 
     if (!parse_expect(parse, TOK_EQ))
         return false;
@@ -191,6 +231,7 @@ bool parse_decl_let(parse_t *parse, decl_t **decl)
 
     char *bound = strndup(var.str, var.len);
     *decl = decl_let_new(bound, value);
+    ((decl_let_t *)*decl)->scheme.type = annot;
     return true;
 }
 

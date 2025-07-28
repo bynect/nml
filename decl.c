@@ -17,7 +17,7 @@ void decl_print(decl_t *decl)
         decl_let_t *let = (decl_let_t *)decl;
         printf("let %s", let->bound);
 
-        if (let->value->type && let->scheme.type) {
+        if (let->scheme.type) {
             fputs(" : ", stdout);
             type_scheme_print(&let->scheme);
         }

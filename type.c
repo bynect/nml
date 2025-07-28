@@ -6,15 +6,16 @@
 
 #include "type.h"
 
-type_t *type_var_new(type_id_t id)
+type_t *type_var_new(char *name, type_id_t id)
 {
     type_var_t *type = calloc(1, sizeof(type_var_t));
     type->base.tag = TYPE_VAR;
+    type->name = name;
     type->id = id;
     return (type_t *)type;
 }
 
-type_t *type_con_new(const char *name, size_t n_args, type_t **args)
+type_t *type_con_new(char *name, size_t n_args, type_t **args)
 {
     type_con_t *type = calloc(1, sizeof(type_con_t));
     type->base.tag = TYPE_CON;
@@ -24,7 +25,7 @@ type_t *type_con_new(const char *name, size_t n_args, type_t **args)
     return (type_t *)type;
 }
 
-type_t *type_con_new_v(const char *name, size_t n_args, ...)
+type_t *type_con_new_v(char *name, size_t n_args, ...)
 {
     va_list vargs;
     va_start(vargs, n_args);
@@ -42,7 +43,10 @@ void type_print(type_t *type)
     switch (type->tag) {
         case TYPE_VAR: {
             type_var_t *var = (type_var_t *)type;
-            printf("'t%u", var->id);
+            if (var->name && !var->id)
+                printf("%s", var->name);
+            else
+                printf("t%u", var->id);
             break;
         }
 
@@ -51,9 +55,10 @@ void type_print(type_t *type)
             bool infix = !strcmp(con->name, "->");
 
             if (!infix)
-                fprintf(stdout, "%s ", con->name);
+                fprintf(stdout, "%s", con->name);
 
             if (con->n_args > 0) {
+                putc(' ', stdout);
 
                 for (size_t i = 0; i < con->n_args; i++) {
                     bool paren = con->args[i]->tag != TYPE_VAR &&
@@ -89,7 +94,11 @@ void type_free(type_t *type)
         type_con_t *con = (type_con_t *)type;
         for (size_t i = 0; i < con->n_args; i++)
             type_free(con->args[i]);
+        free(con->name);
         free(con->args);
+    } else if (type->tag == TYPE_VAR) {
+        type_var_t *var = (type_var_t *)type;
+        free(var->name);
     }
 
     free(type);
