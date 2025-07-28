@@ -8,6 +8,7 @@
 #include "decl.h"
 #include "expr.h"
 #include "lex.h"
+#include "type.h"
 
 static void parse_next(parse_t *parse)
 {
@@ -93,6 +94,11 @@ static bool parse_type_simple(parse_t *parse, type_t **type)
     }
 
     if (parse_match(parse, TOK_LPAR)) {
+        if (parse_match(parse, TOK_RPAR)) {
+            *type = type_con_new(strdup("()"), 0, NULL);
+            return true;
+        }
+
         return parse_type(parse, type)
             && parse_expect(parse, TOK_RPAR);
     }
@@ -206,6 +212,11 @@ static bool parse_expr_simple(parse_t *parse, expr_t **expr)
 
         case TOK_LPAR:
             parse_next(parse);
+            if (parse_match(parse, TOK_RPAR)) {
+                *expr = expr_lit_new_unit();
+                return true;
+            }
+
             return parse_expr(parse, expr)
                 && parse_expect(parse, TOK_RPAR);
 

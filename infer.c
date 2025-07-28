@@ -19,7 +19,7 @@ static type_t *infer_freshvar(infer_t *infer)
 void infer_init(infer_t *infer, env_t *env)
 {
     infer->var_id = 0;
-    infer->unit_type = type_con_new(strdup("Unit"), 0, NULL);
+    infer->unit_type = type_con_new(strdup("()"), 0, NULL);
     infer->int_type = type_con_new(strdup("Int"), 0, NULL);
     infer->str_type = type_con_new(strdup("Str"), 0, NULL);
     infer->env = env;
