@@ -201,13 +201,14 @@ static bool compile_emit_lambda(compile_t *comp, expr_lambda_t *lam)
 
 static bool compile_emit_lit(compile_t *comp, expr_lit_t *lit)
 {
-    if (lit->is_str) {
+    if (lit->kind == LIT_STR) {
         comp->strings = realloc(comp->strings, ++comp->n_strings * sizeof(char *));
         comp->strings[comp->n_strings - 1] = lit->strv;
         fprintf(comp->file, "\tleaq str_%zu(%%rip), %%r12\n", comp->n_strings - 1);
-    } else {
+    } else if (lit->kind == LIT_INT) {
         fprintf(comp->file, "\tmovq $%ld, %%r12\n", lit->intv);
     }
+    // do nothing on unit
     return true;
 }
 
@@ -221,7 +222,7 @@ static bool compile_emit_apply(compile_t *comp, expr_apply_t *app)
             env_find(comp->env, "ffi_extern", NULL) < 0) {
             if (app->arg->tag == EXPR_LIT) {
                 expr_lit_t *lit = (expr_lit_t *)app->arg;
-                if (!lit->is_str) {
+                if (lit->kind != LIT_STR) {
                     printf("Expected known string for ffi_extern\n");
                     return false;
                 }

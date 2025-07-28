@@ -8,6 +8,7 @@
 #include "infer.h"
 #include "decl.h"
 #include "env.h"
+#include "expr.h"
 #include "type.h"
 
 static type_t *infer_freshvar(infer_t *infer)
@@ -18,6 +19,7 @@ static type_t *infer_freshvar(infer_t *infer)
 void infer_init(infer_t *infer, env_t *env)
 {
     infer->var_id = 0;
+    infer->unit_type = type_con_new(strdup("Unit"), 0, NULL);
     infer->int_type = type_con_new(strdup("Int"), 0, NULL);
     infer->str_type = type_con_new(strdup("Str"), 0, NULL);
     infer->env = env;
@@ -276,8 +278,19 @@ bool infer_expr(infer_t *infer, expr_t *expr)
     switch (expr->tag) {
         case EXPR_LIT: {
             expr_lit_t *lit = (expr_lit_t *)expr;
-            expr->type = lit->is_str ? infer->str_type : infer->int_type;
+            switch (lit->kind) {
+                case LIT_UNIT:
+                    expr->type = infer->unit_type;
+                    break;
 
+                case LIT_INT:
+                    expr->type = infer->int_type;
+                    break;
+
+                case LIT_STR:
+                    expr->type = infer->str_type;
+                    break;
+            }
             return annot ? infer_type_unify(annot, expr->type) : true;
         }
 

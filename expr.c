@@ -7,10 +7,19 @@
 #include "env.h"
 #include "type.h"
 
+expr_t *expr_lit_new_unit(void)
+{
+    expr_lit_t *expr = calloc(1, sizeof(expr_lit_t));
+    expr->base.tag = EXPR_LIT;
+    expr->kind = LIT_UNIT;
+    return (expr_t *)expr;
+}
+
 expr_t *expr_lit_new_int(int64_t intv)
 {
     expr_lit_t *expr = calloc(1, sizeof(expr_lit_t));
     expr->base.tag = EXPR_LIT;
+    expr->kind = LIT_INT;
     expr->intv = intv;
     return (expr_t *)expr;
 }
@@ -19,7 +28,7 @@ expr_t *expr_lit_new_str(char *strv)
 {
     expr_lit_t *expr = calloc(1, sizeof(expr_lit_t));
     expr->base.tag = EXPR_LIT;
-    expr->is_str = true;
+    expr->kind = LIT_STR;
     expr->strv = strv;
     return (expr_t *)expr;
 }
@@ -74,10 +83,19 @@ void expr_print(expr_t *expr)
     switch (expr->tag) {
         case EXPR_LIT: {
             expr_lit_t *lit = (expr_lit_t *)expr;
-            if (lit->is_str)
-                printf("\"%s\"", lit->strv);
-            else
-                printf("%ld", lit->intv);
+            switch (lit->kind) {
+                case LIT_UNIT:
+                    fputs("()", stdout);
+                    break;
+
+                case LIT_STR:
+                    printf("\"%s\"", lit->strv);
+                    break;
+
+                case LIT_INT:
+                    printf("%ld", lit->intv);
+                    break;
+            }
             break;
         }
 
@@ -148,7 +166,7 @@ void expr_free(expr_t *expr)
     switch (expr->tag) {
         case EXPR_LIT: {
             expr_lit_t *lit = (expr_lit_t *)expr;
-            if (lit->is_str)
+            if (lit->kind == LIT_STR)
                 free(lit->strv);
             break;
         }

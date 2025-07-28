@@ -11,6 +11,7 @@
 typedef struct {
     uint32_t var_id;
     env_t *env;
+    type_t *unit_type;
     type_t *int_type;
     type_t *str_type;
     type_scheme_t ffi_extern_scheme;

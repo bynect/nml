@@ -11,6 +11,12 @@ typedef enum {
     EXPR_LET,
 } expr_tag_t;
 
+typedef enum {
+    LIT_UNIT,
+    LIT_INT,
+    LIT_STR,
+} lit_kind_t;
+
 typedef struct {
     expr_tag_t tag;
     type_t *type;
@@ -18,7 +24,7 @@ typedef struct {
 
 typedef struct {
     expr_t base;
-    bool is_str;
+    lit_kind_t kind;
     union {
         int64_t intv;
         char *strv;
@@ -51,6 +57,8 @@ typedef struct {
     expr_t *body;
     type_scheme_t scheme;
 } expr_let_t;
+
+expr_t *expr_lit_new_unit(void);
 
 expr_t *expr_lit_new_int(int64_t intv);
 
